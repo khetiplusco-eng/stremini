@@ -46,6 +46,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.cos
@@ -522,90 +523,24 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         speechRecognizer?.startListening(intent)
     }
 
-    // UPDATED FUNCTION with correct URL
+    // UPDATED FUNCTION with agentic multi-step execution loop
     private fun sendVoiceTaskCommand(command: String) {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                val payload = JSONObject().apply {
-                    put("command", command)
-                    put("query", command)
-                    put("instruction", command)
-                    put("ui_context", JSONObject())
-                    // Request real execution instead of plan-only previews.
-                    put("execute", true)
-                    put("dryRun", false)
-                    put("autoExecute", true)
-                }
-                val body = payload.toString().toRequestBody("application/json".toMediaType())
-                val request = Request.Builder()
-                    // FIXED: Added /automation prefix to match index.js mount point
-                    .url("https://ai-keyboard-backend.vishwajeetadkine705.workers.dev/automation/execute-task")
-                    .post(body)
-                    .build()
-
-                val response = client.newCall(request).execute()
-                val (uiStatus, uiOutput) = if (response.isSuccessful) {
-                    val raw = response.body?.string().orEmpty()
-                    try {
-                        val json = JSONObject(raw)
-                        when {
-                            json.has("execution_result") || json.has("result") -> {
-                                val resultValue = if (json.has("execution_result")) json.opt("execution_result") else json.opt("result")
-                                "Task completed" to "Task executed\n\n$resultValue"
-                            }
-                            json.has("plan") -> {
-                                val localExecutionSummary = executePlanLocally(json.optJSONArray("plan"))
-                                if (localExecutionSummary != null && localExecutionSummary.executed > 0) {
-                                    val status = if (localExecutionSummary.failed > 0) {
-                                        "Task partially completed"
-                                    } else {
-                                        "Task completed"
-                                    }
-                                    val output = buildString {
-                                        append("Plan received and executed on device\n")
-                                        append("Executed: ${localExecutionSummary.executed}")
-                                        append(" | Skipped: ${localExecutionSummary.skipped}")
-                                        append(" | Failed: ${localExecutionSummary.failed}\n\n")
-                                        if (localExecutionSummary.notes.isNotBlank()) {
-                                            append(localExecutionSummary.notes)
-                                            append("\n\n")
-                                        }
-                                        append("Original plan:\n")
-                                        append(json.optJSONArray("plan")?.toString(2) ?: "[]")
-                                    }
-                                    status to output
-                                } else {
-                                    "Plan ready (execution unavailable)" to (
-                                        "Plan generated only\n\n" + (json.optJSONArray("plan")?.toString(2) ?: "[]")
-                                    )
-                                }
-                            }
-                            json.has("summary") -> {
-                                "Task response received" to (json.optString("summary") + "\n\n" + json.toString(2))
-                            }
-                            else -> {
-                                "Task response received" to json.toString(2)
-                            }
-                        }
-                    } catch (_: Exception) {
-                        "Task response received" to raw
-                    }
-                } else {
-                    "Failed to execute task" to "Server error: ${response.code}"
-                }
+                val agentResult = executeAgenticVoiceTask(command)
 
                 val directCommandRan = executeDirectVoiceCommand(command)
-                val finalStatus = if (directCommandRan && uiStatus.contains("response", ignoreCase = true)) {
+                val finalStatus = if (directCommandRan && agentResult.first.contains("response", ignoreCase = true)) {
                     "Task completed"
                 } else {
-                    uiStatus
+                    agentResult.first
                 }
-                val finalOutput = if (directCommandRan && uiOutput.isNotBlank()) {
-                    "Direct device automation executed.\n\n$uiOutput"
+                val finalOutput = if (directCommandRan && agentResult.second.isNotBlank()) {
+                    "Direct device automation executed.\n\n${agentResult.second}"
                 } else if (directCommandRan) {
                     "Direct device automation executed."
                 } else {
-                    uiOutput
+                    agentResult.second
                 }
 
                 withContext(Dispatchers.Main) {
@@ -619,6 +554,98 @@ class ChatOverlayService : Service(), View.OnTouchListener {
                 }
             }
         }
+    }
+
+    private fun executeAgenticVoiceTask(command: String): Pair<String, String> {
+        val actionHistory = JSONArray()
+        var step = 1
+        var lastError: String? = null
+        val notes = mutableListOf<String>()
+
+        while (step <= 15) {
+            val payload = JSONObject().apply {
+                put("command", command)
+                put("query", command)
+                put("instruction", command)
+                put("ui_context", ScreenReaderService.captureUiContextSnapshot())
+                put("execute", true)
+                put("dryRun", false)
+                put("autoExecute", true)
+                put("agentMode", true)
+                put("stepNumber", step)
+                put("previousActions", actionHistory)
+                if (!lastError.isNullOrBlank()) put("previousError", lastError)
+            }
+
+            val body = payload.toString().toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("https://ai-keyboard-backend.vishwajeetadkine705.workers.dev/automation/execute-task")
+                .post(body)
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return "Failed to execute task" to "Server error: ${response.code}"
+            }
+
+            val raw = response.body?.string().orEmpty()
+            val json = JSONObject(raw)
+            val actions = when {
+                json.has("actions") -> json.optJSONArray("actions")
+                json.has("result") -> json.optJSONArray("result")
+                json.has("execution_result") -> json.optJSONArray("execution_result")
+                else -> JSONArray()
+            }
+
+            if (actions == null || actions.length() == 0) {
+                val summary = json.optString("summary", "No actions returned")
+                return "Task response received" to summary
+            }
+
+            val summary = executePlanLocally(actions)
+            if (summary != null) {
+                notes.add("Step $step: executed=${summary.executed}, skipped=${summary.skipped}, failed=${summary.failed}")
+                if (summary.notes.isNotBlank()) notes.add(summary.notes)
+                if (summary.failed > 0) {
+                    lastError = "Failed ${summary.failed} actions in step $step"
+                }
+            }
+
+            for (i in 0 until actions.length()) {
+                actionHistory.put(actions.opt(i))
+            }
+
+            val isDone = json.optBoolean("is_done", false) || (0 until actions.length()).any {
+                actions.optJSONObject(it)?.optString("action") == "done"
+            }
+
+            if (isDone) {
+                val status = if ((summary?.failed ?: 0) > 0) "Task partially completed" else "Task completed"
+                return status to buildString {
+                    append(notes.joinToString("\n"))
+                    val doneSummary = actionsToSummary(actions)
+                    if (doneSummary.isNotBlank()) {
+                        append("\n\n")
+                        append(doneSummary)
+                    }
+                }
+            }
+
+            step++
+            Thread.sleep(500)
+        }
+
+        return "Task partially completed" to "Maximum steps reached before task completed.\n\n${notes.joinToString("\n")}"
+    }
+
+    private fun actionsToSummary(actions: JSONArray): String {
+        for (i in 0 until actions.length()) {
+            val action = actions.optJSONObject(i) ?: continue
+            if (action.optString("action") == "done") {
+                return action.optString("summary")
+            }
+        }
+        return ""
     }
 
     private data class PlanExecutionSummary(
@@ -697,6 +724,10 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             step.has("name") -> step.optString("name")
             else -> ""
         }
+        if (ScreenReaderService.executeStructuredAction(step)) {
+            return true
+        }
+
         val combinedText = listOf(actionRaw, targetRaw, description, messageText.lowercase(), contactName.lowercase())
             .joinToString(" ")
 

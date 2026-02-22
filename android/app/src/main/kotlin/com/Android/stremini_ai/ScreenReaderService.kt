@@ -21,6 +21,7 @@ import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.ArrayDeque
 import java.util.concurrent.TimeUnit
@@ -53,6 +54,18 @@ class ScreenReaderService : AccessibilityService() {
                 service.automateGenericCommand(command)
             }
             return true
+        }
+
+        fun executeStructuredAction(action: JSONObject): Boolean {
+            val service = instance ?: return false
+            return runBlocking(Dispatchers.Main) {
+                service.performStructuredAction(action)
+            }
+        }
+
+        fun captureUiContextSnapshot(): JSONObject {
+            val service = instance ?: return JSONObject()
+            return service.buildUiContextSnapshot()
         }
         
         // --- THEME COLORS ---
@@ -541,6 +554,91 @@ class ScreenReaderService : AccessibilityService() {
 
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun buildUiContextSnapshot(): JSONObject {
+        val root = rootInActiveWindow ?: return JSONObject()
+        val nodes = JSONArray()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+
+        while (queue.isNotEmpty() && nodes.length() < 80) {
+            val node = queue.removeFirst()
+            val text = node.text?.toString().orEmpty()
+            val desc = node.contentDescription?.toString().orEmpty()
+
+            if (text.isNotBlank() || desc.isNotBlank() || node.isClickable) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                nodes.put(JSONObject().apply {
+                    put("text", text)
+                    put("content_desc", desc)
+                    put("view_id", node.viewIdResourceName.orEmpty())
+                    put("class", node.className?.toString().orEmpty())
+                    put("clickable", node.isClickable)
+                    put("editable", node.isEditable)
+                    put("bounds", JSONArray(listOf(bounds.left, bounds.top, bounds.right, bounds.bottom)))
+                })
+            }
+
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+
+        return JSONObject().apply {
+            put("package", root.packageName?.toString().orEmpty())
+            put("nodes", nodes)
+            put("captured_at", System.currentTimeMillis())
+        }
+    }
+
+    private suspend fun performStructuredAction(action: JSONObject): Boolean {
+        val actionName = action.optString("action").lowercase().trim()
+        return when (actionName) {
+            "tap", "click" -> {
+                val target = action.optString("target_text").ifBlank { action.optString("text") }
+                clickNodeByLabel(target.lowercase())
+            }
+            "type" -> {
+                val text = action.optString("text")
+                typeIntoFocusedField(text)
+            }
+            "scroll" -> {
+                val direction = action.optString("direction", "down").lowercase()
+                val root = rootInActiveWindow
+                val target = root?.let { findFirstNode(it) { node -> node.isScrollable } }
+                if (direction == "up") {
+                    target?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) == true
+                } else {
+                    target?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) == true
+                }
+            }
+            "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
+            "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
+            "notifications" -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            "quick_settings" -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+            "open_app" -> {
+                val appName = action.optString("app_name").ifBlank { action.optString("target_text") }
+                val packageName = action.optString("package")
+                if (packageName.isNotBlank()) {
+                    val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(launchIntent)
+                        true
+                    } else false
+                } else {
+                    openAppByName(appName.lowercase())
+                }
+            }
+            "wait" -> {
+                delay(action.optLong("duration_ms", 1200L).coerceIn(200L, 8000L))
+                true
+            }
+            "request_screen", "done", "speak", "await_screen_update" -> true
+            else -> false
+        }
     }
 
 
