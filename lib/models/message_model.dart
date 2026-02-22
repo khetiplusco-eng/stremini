@@ -2,6 +2,7 @@ enum MessageType {
   user,
   bot,
   typing,
+  documentBanner, // shown when a document is loaded into context
 }
 
 class Message {
