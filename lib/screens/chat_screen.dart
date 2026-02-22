@@ -1,48 +1,42 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:mime/mime.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 import '../providers/chat_provider.dart';
 import '../models/message_model.dart';
 
-// ── Lightweight PDF text extractor (pure Dart) ────────────────────────────────
-// Parses BT/ET blocks from raw PDF bytes. Good enough for most text-based PDFs.
-// For scanned/complex PDFs, replace with syncfusion_flutter_pdf or pdfx.
-String _extractTextFromPdfBytes(List<int> bytes) {
+// ── PDF text extraction using syncfusion_flutter_pdf ─────────────────────────
+// Handles real-world PDFs: compressed streams, encoded text, multi-page docs.
+// Add to pubspec.yaml:  syncfusion_flutter_pdf: ^27.1.48
+Future<String> _extractTextFromPdfBytes(List<int> bytes) async {
   try {
-    final content = latin1.decode(bytes, allowInvalid: true);
+    final document = PdfDocument(inputBytes: Uint8List.fromList(bytes));
+    final extractor = PdfTextExtractor(document);
     final buffer = StringBuffer();
-    final streamRe =
-        RegExp(r'stream\r?\n(.*?)\r?\nendstream', dotAll: true);
-    final btEtRe = RegExp(r'BT(.*?)ET', dotAll: true);
-    final textRe = RegExp(r'\(([^)\\]|\\.)*\)', dotAll: true);
 
-    for (final sm in streamRe.allMatches(content)) {
-      for (final bm in btEtRe.allMatches(sm.group(1) ?? '')) {
-        for (final tm in textRe.allMatches(bm.group(1) ?? '')) {
-          var t = tm.group(0)!;
-          t = t.substring(1, t.length - 1)
-              .replaceAll(r'\n', '\n')
-              .replaceAll(r'\r', '\r')
-              .replaceAll(r'\t', '\t')
-              .replaceAll(r'\\', '\\')
-              .replaceAll(r'\(', '(')
-              .replaceAll(r'\)', ')');
-          buffer.write(t);
-          buffer.write(' ');
-        }
+    for (int i = 0; i < document.pages.count; i++) {
+      final pageText = extractor.extractText(startPageIndex: i, endPageIndex: i);
+      if (pageText.trim().isNotEmpty) {
+        buffer.writeln(pageText.trim());
+        buffer.writeln(); // blank line between pages
       }
     }
 
+    document.dispose();
+
     final result = buffer.toString().trim();
-    return result.length > 50
-        ? result
-        : '[PDF text extraction limited. Consider using a dedicated PDF plugin.]';
+    if (result.isEmpty) {
+      return ''; // caller will show "could not extract" snackbar
+    }
+    return result;
   } catch (e) {
-    return '[Could not extract PDF text: $e]';
+    debugPrint('[PDF extraction error] $e');
+    return '';
   }
 }
 
@@ -168,27 +162,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       String text;
       if (ext == 'pdf') {
         final bytes = await file.readAsBytes();
-        text = _extractTextFromPdfBytes(bytes);
+        text = await _extractTextFromPdfBytes(bytes);
       } else {
         text = await _readTextFile(file);
       }
 
+      if (!mounted) return;
+
       if (text.trim().isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  'Could not extract text. Try a different format.')));
-        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text(
+            'Could not extract text from this PDF. It may be scanned/image-based.',
+          ),
+          backgroundColor: Colors.orange[800],
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ));
         return;
       }
+
+      // Debug: log how much text was extracted so you can verify
+      debugPrint('[Document loaded] "$name" — ${text.length} chars, '
+          '~${(text.length / 4).round()} tokens');
 
       ref
           .read(chatNotifierProvider.notifier)
           .loadDocument(DocumentContext(fileName: name, text: text));
+
+      // Show success confirmation with char count
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          '📄 Loaded "$name" — ${(text.length / 1000).toStringAsFixed(1)}k characters extracted',
+        ),
+        backgroundColor: const Color(0xFF1A3A5C),
+        duration: const Duration(seconds: 3),
+      ));
     } catch (e) {
+      debugPrint('[Document error] $e');
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error reading document: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error reading document: $e'),
+          backgroundColor: Colors.red[800],
+        ));
       }
     } finally {
       if (mounted) setState(() => _processingDocument = false);
