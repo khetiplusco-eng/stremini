@@ -9,6 +9,7 @@ import android.text.InputType
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -132,6 +133,22 @@ class StreminiIME : InputMethodService() {
             true
         }
 
+        // Keyboard switcher (similar to Android's globe button)
+        view.findViewById<View>(R.id.key_switch_keyboard)?.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    feedback(v)
+                    animateKey(v, true)
+                }
+                MotionEvent.ACTION_UP -> {
+                    animateKey(v, false)
+                    showKeyboardSwitcher()
+                }
+                MotionEvent.ACTION_CANCEL -> animateKey(v, false)
+            }
+            true
+        }
+
         // Shift Key
         shiftKeyView?.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
@@ -153,15 +170,12 @@ class StreminiIME : InputMethodService() {
         return View.OnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Instant Feedback
+                    // Instant feedback + instant commit for smoother typing response.
                     feedback(v)
                     animateKey(v, true)
-                }
-                MotionEvent.ACTION_UP -> {
-                    // Commit on release (standard behavior)
-                    animateKey(v, false)
                     commitText(text)
                 }
+                MotionEvent.ACTION_UP -> animateKey(v, false)
                 MotionEvent.ACTION_CANCEL -> {
                     animateKey(v, false)
                 }
@@ -350,14 +364,23 @@ class StreminiIME : InputMethodService() {
 
     private fun animateKey(view: View, isPressed: Boolean) {
         val scale = if (isPressed) 0.92f else 1.0f
-        val duration = if (isPressed) 40L else 80L // Very fast press, snappy release
-        
+        val duration = if (isPressed) 30L else 60L // Extra-snappy for smoother perceived input latency
+
+        view.animate().cancel()
         view.animate()
             .scaleX(scale)
             .scaleY(scale)
             .setDuration(duration)
             .setInterpolator(if (isPressed) pressInterpolator else releaseInterpolator)
             .start()
+    }
+
+    private fun showKeyboardSwitcher() {
+        val switched = switchToNextInputMethod(false)
+        if (!switched) {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showInputMethodPicker()
+        }
     }
 
     private fun updateShiftState() {

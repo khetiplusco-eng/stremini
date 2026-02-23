@@ -255,7 +255,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         setupFloatingChatListeners()
         windowManager.addView(floatingChatView, floatingChatParams)
         isChatbotVisible = true
-        addMessageToChatbot("Hello! I'm Stremini AI. I have full control of your device. Try commands like: 'open WhatsApp', 'send message to John saying Hello', 'take screenshot', 'scroll down', etc.", isUser = false)
+        addMessageToChatbot("Hello! I'm Stremini AI.", isUser = false)
     }
 
     private fun setupFloatingChatListeners() {
