@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/key_preview_text"
+    android:layout_width="44dp"
+    android:layout_height="56dp"
+    android:gravity="center"
+    android:textColor="#FFFFFF"
+    android:textStyle="bold"
+    android:textSize="24sp"
+    android:background="@drawable/key_preview_background" />

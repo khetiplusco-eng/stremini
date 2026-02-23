@@ -3,8 +3,12 @@ package com.Android.stremini_ai
 import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -14,6 +18,7 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
+import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.*
@@ -33,6 +38,10 @@ class StreminiIME : InputMethodService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private lateinit var audioManager: AudioManager
+    private var vibrator: Vibrator? = null
+
+    private var keyPreviewPopup: PopupWindow? = null
+    private var keyPreviewText: TextView? = null
 
     // Network Client (Optimized for Speed)
     private val client = OkHttpClient.Builder()
@@ -65,6 +74,13 @@ class StreminiIME : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            manager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
     }
 
     override fun onCreateInputView(): View {
@@ -168,19 +184,27 @@ class StreminiIME : InputMethodService() {
     // --- Performance Touch Listener ---
     private fun createKeyTouchListener(text: String): View.OnTouchListener {
         return View.OnTouchListener { v, event ->
-            when (event.action) {
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Instant Feedback
                     feedback(v)
                     animateKey(v, true)
+                    showKeyPreview(v, text)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val isInside = event.x in 0f..v.width.toFloat() && event.y in 0f..v.height.toFloat()
+                    v.isPressed = isInside
                 }
                 MotionEvent.ACTION_UP -> {
-                    // Commit on release (standard behavior)
                     animateKey(v, false)
-                    commitText(text)
+                    hideKeyPreview()
+                    val isInside = event.x in 0f..v.width.toFloat() && event.y in 0f..v.height.toFloat()
+                    if (isInside) {
+                        commitText(text)
+                    }
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     animateKey(v, false)
+                    hideKeyPreview()
                 }
             }
             true
@@ -356,12 +380,11 @@ class StreminiIME : InputMethodService() {
     // --- UX Feedback ---
 
     private fun feedback(view: View) {
-        // 1. Haptic
-        view.performHapticFeedback(
-            android.view.HapticFeedbackConstants.KEYBOARD_TAP,
-            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
-        )
-        // 2. Sound (Crucial for "Samsung" feel)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+        } else {
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        }
         audioManager.playSoundEffect(AudioManager.FX_KEY_CLICK)
     }
 
@@ -369,6 +392,7 @@ class StreminiIME : InputMethodService() {
         val scale = if (isPressed) 0.92f else 1.0f
         val duration = if (isPressed) 40L else 80L // Very fast press, snappy release
         
+        view.animate().cancel()
         view.animate()
             .scaleX(scale)
             .scaleY(scale)
@@ -398,6 +422,34 @@ class StreminiIME : InputMethodService() {
         imeManager.showInputMethodPicker()
     }
 
+
+    private fun showKeyPreview(anchor: View, text: String) {
+        if (text.length != 1 || !text[0].isLetterOrDigit()) return
+
+        val popup = keyPreviewPopup ?: run {
+            val previewView = layoutInflater.inflate(R.layout.key_preview_popup, null)
+            keyPreviewText = previewView.findViewById(R.id.key_preview_text)
+            PopupWindow(
+                previewView,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                false
+            ).also { keyPreviewPopup = it }
+        }
+
+        keyPreviewText?.text = if (isShiftOn) text.uppercase() else text
+
+        if (popup.isShowing) {
+            popup.update(anchor, 0, -(anchor.height * 2), -1, -1)
+        } else {
+            popup.showAsDropDown(anchor, 0, -(anchor.height * 2))
+        }
+    }
+
+    private fun hideKeyPreview() {
+        keyPreviewPopup?.dismiss()
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         // Detect App Context
@@ -410,6 +462,7 @@ class StreminiIME : InputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        hideKeyPreview()
         serviceScope.cancel()
     }
 }
