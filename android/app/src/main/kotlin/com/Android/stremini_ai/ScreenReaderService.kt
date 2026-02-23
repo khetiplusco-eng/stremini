@@ -24,6 +24,7 @@ import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.ArrayDeque
 import java.util.concurrent.TimeUnit
@@ -75,6 +76,9 @@ class ScreenReaderService : AccessibilityService() {
     private var tagsContainer: FrameLayout? = null
     private var isScanning = false
     private var tagsVisible = false
+    private var automationStatusView: TextView? = null
+    private var automationHighlightView: View? = null
+    private var lastAccessibilityEventTime: Long = 0L
 
     data class ScanResult(
         val isSafe: Boolean,
@@ -116,14 +120,249 @@ class ScreenReaderService : AccessibilityService() {
         return START_NOT_STICKY
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        lastAccessibilityEventTime = System.currentTimeMillis()
+    }
     override fun onInterrupt() {}
 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
         clearAllOverlays()
+        clearAutomationOverlay()
         instance = null
+    }
+
+    data class PlanRunResult(
+        val success: Boolean,
+        val completedSteps: Int,
+        val failedSteps: Int,
+        val message: String
+    )
+
+    suspend fun executeBackendSteps(
+        steps: JSONArray,
+        onStatus: (String) -> Unit = {}
+    ): PlanRunResult = withContext(Dispatchers.Main) {
+        var completed = 0
+        var failed = 0
+        ensureAutomationOverlay()
+
+        for (i in 0 until steps.length()) {
+            val step = steps.optJSONObject(i) ?: continue
+            val action = step.optString("action", "").ifBlank { step.optString("type", "") }
+            val friendly = "Step ${i + 1}/${steps.length()}: ${action.ifBlank { "action" }}"
+            showAutomationStatus(friendly)
+            onStatus(friendly)
+
+            val ok = runCatching { runAtomicStep(step, onStatus) }.getOrDefault(false)
+            if (ok) completed++ else failed++
+            waitForUiToSettle()
+        }
+
+        val done = failed == 0
+        val finalMsg = if (done) {
+            "Completed $completed steps"
+        } else {
+            "Completed $completed, failed $failed"
+        }
+        showAutomationStatus(finalMsg, isError = !done)
+        PlanRunResult(done, completed, failed, finalMsg)
+    }
+
+    fun getVisibleScreenState(maxNodes: Int = 140): JSONArray {
+        val root = rootInActiveWindow ?: return JSONArray()
+        val out = JSONArray()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty() && out.length() < maxNodes) {
+            val node = queue.removeFirst()
+            val text = node.text?.toString()?.trim().orEmpty()
+            val desc = node.contentDescription?.toString()?.trim().orEmpty()
+            if (text.isNotBlank() || desc.isNotBlank()) {
+                out.put(JSONObject().apply {
+                    put("text", text)
+                    put("description", desc)
+                    put("viewId", node.viewIdResourceName ?: "")
+                    put("clickable", node.isClickable)
+                    put("editable", node.isEditable)
+                })
+            }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { queue.add(it) }
+        }
+        return out
+    }
+
+    private suspend fun runAtomicStep(step: JSONObject, onStatus: (String) -> Unit): Boolean {
+        val action = step.optString("action", "").lowercase().trim()
+        val target = step.optString("target", "").trim()
+        val targetType = step.optString("type", "text").lowercase().trim()
+        val text = step.optString("text", "").trim()
+
+        return when {
+            action == "open_app" -> {
+                val pkg = step.optString("package", step.optString("app", ""))
+                if (pkg.isBlank()) false else openAppByName(pkg)
+            }
+            action == "click" || action == "tap" -> {
+                val node = findNodeByTarget(target, targetType)
+                if (node == null) {
+                    onStatus("Element '$target' not found")
+                    showAutomationStatus("Element '$target' not found", isError = true)
+                    false
+                } else {
+                    val bounds = Rect()
+                    node.getBoundsInScreen(bounds)
+                    flashNodeHighlight(bounds, false)
+                    performClick(node)
+                }
+            }
+            action == "type" || action == "input" -> {
+                if (text.isBlank()) return false
+                val node = if (target.isBlank()) findFocusedEditableNode() else findNodeByTarget(target, targetType)
+                val editable = node ?: findFocusedEditableNode()
+                if (editable == null) {
+                    onStatus("No editable field found")
+                    showAutomationStatus("No editable field found", isError = true)
+                    false
+                } else {
+                    val bounds = Rect()
+                    editable.getBoundsInScreen(bounds)
+                    flashNodeHighlight(bounds, false)
+                    setNodeText(editable, text)
+                }
+            }
+            action == "wait" || action == "delay" -> {
+                delay(step.optLong("milliseconds", 800L))
+                true
+            }
+            else -> executeFullDeviceCommand(action)
+        }
+    }
+
+    private fun findFocusedEditableNode(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow ?: return null
+        return findFirstNode(root) { it.isEditable && (it.isFocused || it.isFocusable) }
+            ?: findFirstNode(root) { it.isEditable }
+    }
+
+    private fun findNodeByTarget(target: String, type: String): AccessibilityNodeInfo? {
+        if (target.isBlank()) return null
+        val root = rootInActiveWindow ?: return null
+        return when (type) {
+            "description" -> findFirstNode(root) {
+                it.contentDescription?.toString()?.contains(target, ignoreCase = true) == true
+            }
+            "view_id" -> {
+                val byId = runCatching { root.findAccessibilityNodeInfosByViewId(target) }.getOrDefault(emptyList())
+                byId.firstOrNull()
+            }
+            else -> {
+                val byText = root.findAccessibilityNodeInfosByText(target)
+                byText.firstOrNull() ?: findFirstNode(root) {
+                    it.text?.toString()?.contains(target, ignoreCase = true) == true
+                }
+            }
+        }
+    }
+
+    private suspend fun waitForUiToSettle(stableMs: Long = 450L, timeoutMs: Long = 3_000L) {
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            val idleFor = System.currentTimeMillis() - lastAccessibilityEventTime
+            if (idleFor >= stableMs) return
+            delay(80)
+        }
+    }
+
+    private fun ensureAutomationOverlay() {
+        if (automationStatusView != null) return
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        automationStatusView = TextView(this).apply {
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor("#CC111827"))
+                setStroke(dpToPx(1), Color.parseColor("#334155"))
+            }
+            text = "Agent ready"
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dpToPx(42)
+        }
+        windowManager.addView(automationStatusView, params)
+    }
+
+    private fun showAutomationStatus(message: String, isError: Boolean = false) {
+        ensureAutomationOverlay()
+        val view = automationStatusView ?: return
+        view.text = message
+        val bgColor = if (isError) "#CC7F1D1D" else "#CC111827"
+        val borderColor = if (isError) "#F87171" else "#60A5FA"
+        view.background = GradientDrawable().apply {
+            cornerRadius = dpToPx(10).toFloat()
+            setColor(Color.parseColor(bgColor))
+            setStroke(dpToPx(1), Color.parseColor(borderColor))
+        }
+    }
+
+    private fun flashNodeHighlight(bounds: Rect, isError: Boolean) {
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        automationHighlightView?.let { runCatching { windowManager.removeView(it) } }
+        val highlight = View(this).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                cornerRadius = dpToPx(8).toFloat()
+                setStroke(dpToPx(3), if (isError) Color.parseColor("#FF3B30") else Color.parseColor("#22C55E"))
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            bounds.width().coerceAtLeast(dpToPx(32)),
+            bounds.height().coerceAtLeast(dpToPx(32)),
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bounds.left
+            y = bounds.top
+        }
+        automationHighlightView = highlight
+        runCatching { windowManager.addView(highlight, params) }
+        serviceScope.launch {
+            delay(500)
+            automationHighlightView?.let { runCatching { windowManager.removeView(it) } }
+            automationHighlightView = null
+        }
+    }
+
+    private fun clearAutomationOverlay() {
+        automationStatusView?.let { runCatching { windowManager.removeView(it) } }
+        automationStatusView = null
+        automationHighlightView?.let { runCatching { windowManager.removeView(it) } }
+        automationHighlightView = null
     }
 
     // ==========================================
