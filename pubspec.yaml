@@ -20,6 +20,7 @@ dependencies:
   file_picker: ^8.0.0
   mime: ^1.0.5
   shared_preferences: ^2.2.2
+  syncfusion_flutter_pdf: ^27.1.48
   
 dev_dependencies:
   flutter_test:
