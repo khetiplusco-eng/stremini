@@ -82,6 +82,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private var autoTaskerParams: WindowManager.LayoutParams? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var isAutoTaskerVisible = false
+    private var keepListeningLoop = false
 
     private var initialX = 0
     private var initialY = 0
@@ -479,11 +480,13 @@ class ChatOverlayService : Service(), View.OnTouchListener {
 
         windowManager.addView(autoTaskerView, autoTaskerParams)
         isAutoTaskerVisible = true
+        keepListeningLoop = true
         startVoiceCapture()
         return true
     }
 
     private fun hideAutoTasker() {
+        keepListeningLoop = false
         speechRecognizer?.destroy(); speechRecognizer = null
         autoTaskerView?.let { windowManager.removeView(it) }
         autoTaskerView = null; autoTaskerParams = null; isAutoTaskerVisible = false
@@ -507,13 +510,21 @@ class ChatOverlayService : Service(), View.OnTouchListener {
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { status.text = "Processing your command..." }
-                override fun onError(error: Int) { status.text = "Voice capture failed ($error). Try again." }
+                override fun onError(error: Int) {
+                    status.text = "Voice capture failed ($error). Retrying..."
+                    if (keepListeningLoop && isAutoTaskerVisible) {
+                        serviceScope.launch { delay(700); startVoiceCapture() }
+                    }
+                }
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
                 override fun onPartialResults(partialResults: android.os.Bundle?) {}
                 override fun onResults(results: android.os.Bundle?) {
                     val command = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim()
                     if (command.isNullOrBlank()) {
                         status.text = "Could not understand. Try again."
+                        if (keepListeningLoop && isAutoTaskerVisible) {
+                            serviceScope.launch { delay(500); startVoiceCapture() }
+                        }
                     } else {
                         status.text = "Understood: $command"
                         view.findViewById<TextView>(R.id.tv_tasker_output).text = "🎙 Command: $command\n\n⚙️ Executing..."
@@ -563,6 +574,11 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             } catch (e: Exception) {
                 statusView.text = "❌ Failed"
                 outputView.text = "🎙 Command: $command\n\n❌ Error: ${e.message}"
+            }
+
+            if (keepListeningLoop && isAutoTaskerVisible) {
+                delay(650)
+                startVoiceCapture()
             }
         }
     }
@@ -706,199 +722,74 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     }
 
     private suspend fun sendVoiceTaskCommandToAI(command: String): Pair<String, String> {
-        val screenContext = try {
-            ScreenReaderService.getInstance()?.let { service ->
-                val root = service.rootInActiveWindow
-                val sb = StringBuilder()
-                fun traverse(node: android.view.accessibility.AccessibilityNodeInfo) {
-                    val text = node.text?.toString() ?: node.contentDescription?.toString()
-                    if (!text.isNullOrBlank()) sb.appendLine(text.trim())
-                    for (i in 0 until node.childCount) node.getChild(i)?.let { traverse(it) }
-                }
-                root?.let { traverse(it) }
-                sb.toString().take(1500)
-            } ?: ""
-        } catch (e: Exception) { "" }
+        val service = ScreenReaderService.getInstance()
+        if (service == null) {
+            return "❌ Accessibility service unavailable" to "Enable Stremini Screen Reader in Accessibility settings."
+        }
 
-        val payload = JSONObject().apply {
-            put("command", command)
+        val maxAgentSteps = 8
+        var payload = JSONObject().apply {
             put("query", command)
-            put("instruction", command)
-            put("screen_context", screenContext)
-            put("ui_context", JSONObject())
-            put("execute", true)
-            put("dryRun", false)
-            put("autoExecute", true)
+            put("command", command)
+            put("step_index", 0)
+            put("screen_state", service.getVisibleScreenState())
         }
 
-        val body = payload.toString().toRequestBody("application/json".toMediaType())
-        val request = Request.Builder()
-            .url("https://ai-keyboard-backend.vishwajeetadkine705.workers.dev/automation/execute-task")
-            .post(body).build()
+        repeat(maxAgentSteps) { index ->
+            val request = Request.Builder()
+                .url("https://ai-keyboard-backend.vishwajeetadkine705.workers.dev/classify-task")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
 
-        val response = client.newCall(request).execute()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return "❌ Server error ${response.code}" to "Failed to classify task."
+            }
 
-        return if (response.isSuccessful) {
             val raw = response.body?.string().orEmpty()
-            try {
-                val json = JSONObject(raw)
-                when {
-                    json.has("execution_result") || json.has("result") -> {
-                        val resultValue = json.opt("execution_result") ?: json.opt("result")
-                        "✅ Task completed" to "Task executed\n\n$resultValue"
-                    }
-                    json.has("plan") -> {
-                        val planArray = json.optJSONArray("plan")
-                        val summary = executePlanLocally(planArray)
-                        if (summary != null && summary.executed > 0) {
-                            val status = if (summary.failed > 0) "⚠️ Partially completed" else "✅ Task completed"
-                            val output = buildString {
-                                appendLine("Plan executed on device")
-                                appendLine("✅ Executed: ${summary.executed}  ⏭ Skipped: ${summary.skipped}  ❌ Failed: ${summary.failed}")
-                                if (summary.notes.isNotBlank()) { appendLine(); appendLine(summary.notes) }
-                            }
-                            status to output
-                        } else {
-                            "📋 Plan ready (manual execution needed)" to (
-                                "Plan generated:\n\n" + (planArray?.toString(2) ?: "[]")
-                            )
-                        }
-                    }
-                    json.has("summary") -> "🤖 Response received" to json.optString("summary")
-                    else -> "🤖 Response received" to json.toString(2)
+            val json = runCatching { JSONObject(raw) }.getOrElse {
+                return "❌ Invalid backend response" to raw
+            }
+
+            val steps = json.optJSONArray("steps")
+            if (steps != null && steps.length() > 0) {
+                val result = service.executeBackendSteps(steps)
+                val status = if (result.success) "✅ Task completed" else "⚠️ Task partially completed"
+                val output = buildString {
+                    appendLine("Task: ${json.optString("task", "unknown")}")
+                    appendLine("✅ Executed: ${result.completedSteps}")
+                    appendLine("❌ Failed: ${result.failedSteps}")
+                    appendLine()
+                    append(result.message)
                 }
-            } catch (_: Exception) {
-                "🤖 Response received" to raw
+                return status to output
             }
-        } else {
-            "❌ Server error ${response.code}" to "Failed to get AI response."
+
+            val nextStep = json.optJSONObject("next_step") ?: json.optJSONObject("action")
+            if (nextStep != null) {
+                val oneStep = org.json.JSONArray().put(nextStep)
+                val result = service.executeBackendSteps(oneStep)
+                if (!result.success) {
+                    return "❌ Step failed" to result.message
+                }
+            }
+
+            val done = json.optBoolean("done") || json.optBoolean("completed")
+            if (done) {
+                val summary = json.optString("summary", "Agentic loop completed")
+                return "✅ Task completed" to summary
+            }
+
+            payload = JSONObject().apply {
+                put("query", command)
+                put("command", command)
+                put("step_index", index + 1)
+                put("screen_state", service.getVisibleScreenState())
+                put("previous_response", json)
+            }
         }
-    }
 
-    data class PlanExecutionSummary(val executed: Int, val skipped: Int, val failed: Int, val notes: String)
-
-    private suspend fun executePlanLocally(planArray: JSONArray?): PlanExecutionSummary? {
-        if (planArray == null || planArray.length() == 0) return null
-        var executed = 0; var skipped = 0; var failed = 0
-        val notes = mutableListOf<String>()
-
-        for (i in 0 until planArray.length()) {
-            val rawStep = planArray.opt(i)
-            val stepJson = when (rawStep) {
-                is JSONObject -> rawStep
-                is String -> JSONObject().apply { put("action", rawStep) }
-                else -> null
-            }
-            if (stepJson == null) { skipped++; continue }
-
-            val didRun = runCatching { executeSinglePlanStep(stepJson) }.getOrElse {
-                failed++
-                notes.add("Step ${i + 1}: failed (${it.message ?: "unknown"})")
-                false
-            }
-            if (didRun) executed++ else { skipped++; notes.add("Step ${i + 1}: no matching action") }
-            delay(500) // Brief pause between steps
-        }
-        return PlanExecutionSummary(executed, skipped, failed, notes.joinToString("\n"))
-    }
-
-    private suspend fun executeSinglePlanStep(step: JSONObject): Boolean {
-        val actionRaw = (step.optString("action", step.optString("type", step.optString("tool", "")))).lowercase().trim()
-        val targetRaw = step.optString("target", "").lowercase().trim()
-        val description = step.optString("description", "").lowercase().trim()
-        val messageText = step.optString("message", step.optString("text", ""))
-        val contactName = step.optString("contact", step.optString("recipient", step.optString("name", "")))
-        val combined = "$actionRaw $targetRaw $description ${messageText.lowercase()} ${contactName.lowercase()}"
-
-        return when {
-            combined.contains("whatsapp") && combined.contains("message") -> {
-                val (contact, message) = extractWhatsAppFromStep(step)
-                if (contact.isBlank()) return false
-                ScreenReaderService.runWhatsAppMessageAutomation(contact, message.ifBlank { "Hello $contact" })
-                delay(3000)
-                true
-            }
-            actionRaw.contains("open_app") || actionRaw.contains("launch") || actionRaw.contains("open") -> {
-                val appName = step.optString("app", step.optString("package", targetRaw))
-                if (appName.isBlank()) return false
-                val service = ScreenReaderService.getInstance()
-                service?.openAppByName(appName) ?: false
-            }
-            actionRaw.contains("tap") || actionRaw.contains("click") -> {
-                val target = step.optString("target", step.optString("element", ""))
-                if (target.isBlank()) return false
-                ScreenReaderService.runGenericAutomation("tap $target")
-                delay(500)
-                true
-            }
-            actionRaw.contains("type") || actionRaw.contains("input") || actionRaw.contains("write") -> {
-                val text = step.optString("text", step.optString("value", messageText))
-                if (text.isBlank()) return false
-                ScreenReaderService.runGenericAutomation("type $text")
-                true
-            }
-            actionRaw.contains("scroll") -> {
-                val direction = step.optString("direction", "down")
-                ScreenReaderService.runGenericAutomation("scroll $direction")
-                delay(300)
-                true
-            }
-            actionRaw.contains("swipe") -> {
-                val direction = step.optString("direction", "up")
-                ScreenReaderService.runGenericAutomation("swipe $direction")
-                delay(300)
-                true
-            }
-            actionRaw.contains("wait") || actionRaw.contains("delay") -> {
-                val ms = step.optLong("duration", step.optLong("milliseconds", 1000))
-                delay(ms)
-                true
-            }
-            actionRaw.contains("navigate") || actionRaw.contains("back") -> {
-                ScreenReaderService.runGenericAutomation("go back")
-                true
-            }
-            actionRaw.contains("home") -> {
-                ScreenReaderService.runGenericAutomation("go home")
-                true
-            }
-            actionRaw.contains("screenshot") -> {
-                ScreenReaderService.runGenericAutomation("take screenshot")
-                true
-            }
-            actionRaw.contains("search") -> {
-                val query = step.optString("query", step.optString("text", targetRaw))
-                if (query.isBlank()) return false
-                ScreenReaderService.runGenericAutomation("search for $query")
-                delay(500)
-                true
-            }
-            actionRaw.contains("url") || actionRaw.contains("website") || actionRaw.contains("browse") -> {
-                val url = step.optString("url", step.optString("target", ""))
-                if (url.isBlank()) return false
-                ScreenReaderService.runGenericAutomation("go to $url")
-                true
-            }
-            actionRaw.contains("call") -> {
-                val contact = step.optString("contact", step.optString("name", ""))
-                if (contact.isBlank()) return false
-                ScreenReaderService.runGenericAutomation("call $contact")
-                true
-            }
-            else -> false
-        }
-    }
-
-    private fun extractWhatsAppFromStep(step: JSONObject): Pair<String, String> {
-        val contact = step.optString("contact", step.optString("recipient", step.optString("name", ""))).trim()
-        val message = step.optString("message", step.optString("text", "")).trim()
-        if (contact.isNotBlank()) return contact to message
-
-        val source = listOf(step.optString("action", ""), step.optString("description", ""),
-            step.optString("instruction", "")).joinToString(" ").lowercase()
-        val c = Regex("message\\s+([a-zA-Z0-9 _.-]+?)(?:\\s+that|\\s+saying|\$)").find(source)?.groupValues?.getOrNull(1)?.trim() ?: ""
-        val m = Regex("(?:that|saying)\\s+(.+)\$", RegexOption.IGNORE_CASE).find(source)?.groupValues?.getOrNull(1)?.trim() ?: ""
-        return c to m
+        return "⚠️ Max steps reached" to "Stopped after MAX_AGENT_STEPS without completion."
     }
 
     // ==========================================
