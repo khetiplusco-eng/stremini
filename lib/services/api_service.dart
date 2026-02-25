@@ -153,12 +153,15 @@ class ApiService {
           Uri.parse(githubAgentUrl),
           headers: {"Content-Type": "application/json", "Accept": "application/json"},
           body: jsonEncode({
+            "agentName": "stremini architect",
             "repoOwner": repoOwner,
             "repoName": repoName,
-            "task": task,
+            "task": '$task\n\nConstraints:\n- Do not push or deploy changes.\n- Return corrected code only (no AI reasoning).',
             "history": history,
             "readFiles": visitedFiles,
             "iteration": iteration,
+            "allowPush": false,
+            "outputFormat": "code_only",
           }),
         );
 
@@ -221,16 +224,36 @@ class ApiService {
   }
 
   String _summaryFromResponse(Map<String, dynamic> data) {
+    final status = data['status'];
     switch (data['status']) {
       case 'COMPLETED':
-        return data['solution']?.toString() ?? 'Task completed without solution text.';
+        return _extractCodeOnly(
+          data['solution']?.toString() ??
+              'No corrected code returned for status $status.',
+        );
       case 'FIXED':
-        return data['pushMessage']?.toString() ?? 'Fix generated and pushed.';
+        return _extractCodeOnly(
+          data['solution']?.toString() ??
+              data['patch']?.toString() ??
+              data['fix']?.toString() ??
+              data['pushMessage']?.toString() ??
+              'Corrected code generated. No push action was requested.',
+        );
       case 'ERROR':
         return data['message']?.toString() ?? 'Agent returned an error.';
       default:
         return 'Unexpected response status: ${data['status']}';
     }
+  }
+
+  String _extractCodeOnly(String input) {
+    final fenceRegex = RegExp(r'```(?:[a-zA-Z0-9_+-]+)?\n([\s\S]*?)```');
+    final matches = fenceRegex.allMatches(input).toList();
+    if (matches.isEmpty) return input.trim();
+    return matches
+        .map((m) => (m.group(1) ?? '').trim())
+        .where((part) => part.isNotEmpty)
+        .join('\n\n');
   }
 
   // ── Security scan ─────────────────────────────────────────────────────────
