@@ -136,8 +136,7 @@ We welcome contributions! Please follow these steps:
 This project is licensed under the **MIT License** – see the `LICENSE` file for details.
 
 ## Contact
-- **Maintainer**: Your Name (or team)
-- **Email**: your.email@example.com
+- **Maintainer**: StreminiAI developers.
 - **GitHub**: https://github.com/983111/Streminiai-
 
 ## Roadmap
