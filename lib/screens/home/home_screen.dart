@@ -7,6 +7,7 @@ import '../../core/theme/app_text_styles.dart';
 import '../../core/widgets/app_container.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../controllers/home_controller.dart';
+import '../../providers/scanner_provider.dart';
 import '../../services/keyboard_service.dart';
 import '../chat_screen.dart';
 import '../stremini_agent_screen.dart';
@@ -385,50 +386,132 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     HomeController controller,
     AsyncValue<KeyboardStatus> keyboardStatus,
   ) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _buildModuleCard(
-            'GitHub Agent',
-            'Autonomous code ops',
-            Icons.integration_instructions,
-            AppColors.scanCyan,
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const StreminiAgentScreen()),
+        Row(
+          children: [
+            Expanded(
+              child: _buildModuleCard(
+                'Scam Detection',
+                'Live screen risk scan',
+                Icons.shield,
+                AppColors.warning,
+                () => _handleScamDetectionTap(),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModuleCard(
+                'Automation',
+                'Hands-free phone tasks',
+                Icons.bolt,
+                AppColors.scanCyan,
+                () => _handleAutomationTap(controller),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: keyboardStatus.when(
-            data: (status) => _buildModuleCard(
-              'AI Keyboard',
-              'Smart typing assist',
-              Icons.keyboard,
-              AppColors.secondary,
-              () => ref
-                  .read(keyboardServiceProvider)
-                  .openKeyboardSettingsActivity(),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildModuleCard(
+                'GitHub Agent',
+                'Autonomous code ops',
+                Icons.integration_instructions,
+                AppColors.scanCyan,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const StreminiAgentScreen()),
+                ),
+              ),
             ),
-            loading: () => _buildModuleCard(
-              'AI Keyboard',
-              'Smart typing assist',
-              Icons.keyboard,
-              AppColors.secondary,
-              () {},
+            const SizedBox(width: 12),
+            Expanded(
+              child: keyboardStatus.when(
+                data: (status) => _buildModuleCard(
+                  'AI Keyboard',
+                  status.isActive
+                      ? 'Ready to type with AI'
+                      : 'Tap to complete setup',
+                  Icons.keyboard,
+                  AppColors.secondary,
+                  _openKeyboardSetup,
+                ),
+                loading: () => _buildModuleCard(
+                  'AI Keyboard',
+                  'Checking keyboard status...',
+                  Icons.keyboard,
+                  AppColors.secondary,
+                  () {},
+                ),
+                error: (_, __) => _buildModuleCard(
+                  'AI Keyboard',
+                  'Open keyboard settings',
+                  Icons.keyboard,
+                  AppColors.secondary,
+                  _openKeyboardSetup,
+                ),
+              ),
             ),
-            error: (_, __) => _buildModuleCard(
-              'AI Keyboard',
-              'Smart typing assist',
-              Icons.keyboard,
-              AppColors.secondary,
-              () {},
-            ),
-          ),
+          ],
         ),
       ],
+    );
+  }
+
+  Future<void> _handleScamDetectionTap() async {
+    final scannerNotifier = ref.read(scannerStateProvider.notifier);
+    await scannerNotifier.toggleScanning();
+    if (!mounted) return;
+    final scannerState = ref.read(scannerStateProvider);
+    final message = scannerState.error ??
+        (scannerState.isActive
+            ? 'Scam detection started'
+            : 'Scam detection stopped');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            scannerState.error == null ? AppColors.success : AppColors.warning,
+      ),
+    );
+  }
+
+  Future<void> _handleAutomationTap(HomeController controller) async {
+    final success = await controller.toggleBubble(true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? 'Automation ready. Use the floating menu to start tasks.'
+            : 'Enable required permissions to use automation'),
+        backgroundColor: success ? AppColors.success : AppColors.warning,
+      ),
+    );
+  }
+
+  Future<void> _openKeyboardSetup() async {
+    final service = ref.read(keyboardServiceProvider);
+    final status = await service.checkKeyboardStatus();
+
+    if (!status.isEnabled) {
+      await service.openKeyboardSettings();
+      return;
+    }
+
+    if (!status.isSelected) {
+      await service.showKeyboardPicker();
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('AI Keyboard is already active'),
+        backgroundColor: AppColors.success,
+      ),
     );
   }
 
