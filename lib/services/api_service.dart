@@ -227,25 +227,33 @@ class ApiService {
     final status = data['status'];
     switch (data['status']) {
       case 'COMPLETED':
-        return _extractCodeOnly(
-          data['solution']?.toString() ??
-              'No corrected code returned for status $status.',
-        );
+        final solution = _extractCodeOnly(data['solution']?.toString() ?? '');
+        return solution.isNotEmpty
+            ? solution
+            : 'No corrected code returned for status $status.';
       case 'FIXED':
-        return _extractCodeOnly(
+        final filePath = data['filePath']?.toString();
+        final fixedContent = _extractCodeOnly(data['fixedContent']?.toString() ?? '');
+        if (fixedContent.isNotEmpty) {
+          if (filePath == null || filePath.isEmpty) return fixedContent;
+          return '// File: $filePath\n$fixedContent';
+        }
+        final fallback = _extractCodeOnly(
           data['solution']?.toString() ??
               data['patch']?.toString() ??
               data['fix']?.toString() ??
               data['pushMessage']?.toString() ??
-              'Corrected code generated. No push action was requested.',
+              '',
         );
+        return fallback.isNotEmpty
+            ? fallback
+            : 'Corrected code generated. No file content was returned.';
       case 'ERROR':
         return data['message']?.toString() ?? 'Agent returned an error.';
       default:
         return 'Unexpected response status: ${data['status']}';
     }
   }
-
   String _extractCodeOnly(String input) {
     final fenceRegex = RegExp(r'```(?:[a-zA-Z0-9_+-]+)?\n([\s\S]*?)```');
     final matches = fenceRegex.allMatches(input).toList();
