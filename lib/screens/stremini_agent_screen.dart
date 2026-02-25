@@ -26,9 +26,6 @@ class _StreminiAgentScreenState
   GithubAgentRunResult? _runResult;
   bool _isLoading = false;
 
-  // Live iteration ticker shown while loading
-  int _liveIteration = 0;
-
   @override
   void dispose() {
     _ownerController.dispose();
@@ -53,7 +50,6 @@ class _StreminiAgentScreenState
     setState(() {
       _isLoading = true;
       _runResult = null;
-      _liveIteration = 0;
     });
 
     try {
@@ -98,7 +94,7 @@ class _StreminiAgentScreenState
       appBar: AppBar(
         backgroundColor: AppColors.black,
         elevation: 0,
-        title: Text('Stremini GitHub Agent', style: AppTextStyles.h2),
+        title: Text('Stremini Architect', style: AppTextStyles.h2),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios,
               color: AppColors.white),
@@ -118,8 +114,8 @@ class _StreminiAgentScreenState
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  AppColors.primary.withOpacity(0.22),
-                  AppColors.scanCyan.withOpacity(0.14),
+                  AppColors.primary.withOpacity(0.25),
+                  AppColors.scanCyan.withOpacity(0.18),
                 ],
               ),
               border: BorderSide(
@@ -132,16 +128,39 @@ class _StreminiAgentScreenState
                       const Icon(Icons.auto_awesome,
                           color: AppColors.scanCyan, size: 22),
                       const SizedBox(width: 10),
-                      Text('Autonomous GitHub Architect',
+                      Text('Professional Code Architect',
                           style: AppTextStyles.h3),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Iteratively reads your repo, synthesises a fix, and pushes it — '
-                    'following the CONTINUE-loop contract with built-in loop protection.',
+                    'Generates corrected, copy-ready code only. '
+                    'No repository push is allowed from this workflow.',
                     style: AppTextStyles.body3
                         .copyWith(color: AppColors.hintGray),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            AppContainer(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              color: AppColors.darkGray,
+              border: BorderSide(
+                  color: AppColors.info.withOpacity(0.4)),
+              child: Row(
+                children: [
+                  const Icon(Icons.shield_moon,
+                      color: AppColors.info, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Safe mode enabled: output is restricted to corrected code snippets and patch content.',
+                      style: AppTextStyles.body3
+                          .copyWith(color: AppColors.hintGray),
+                    ),
                   ),
                 ],
               ),
@@ -167,8 +186,7 @@ class _StreminiAgentScreenState
             _buildInputField(
               controller: _taskController,
               label: 'Task for the Agent',
-              hint:
-                  'e.g. Investigate API loop handling and push a robust fix',
+              hint: 'e.g. Fix failing auth refresh logic and return patch only',
               icon: Icons.code_outlined,
               maxLines: 5,
             ),
@@ -201,7 +219,7 @@ class _StreminiAgentScreenState
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Reading files, reasoning, preparing fix',
+                      'Preparing corrected code output',
                       style: AppTextStyles.body3
                           .copyWith(color: AppColors.hintGray),
                     ),
@@ -224,7 +242,7 @@ class _StreminiAgentScreenState
         icon: Icon(
             _isLoading ? Icons.hourglass_top : Icons.terminal),
         label: Text(
-          _isLoading ? 'Running…' : 'Run Agent',
+          _isLoading ? 'Running…' : 'Generate Code',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -304,11 +322,6 @@ class _StreminiAgentScreenState
                   Text(result.status,
                       style: AppTextStyles.h3
                           .copyWith(color: statusColor)),
-                  if (result.pushed) ...[
-                    const Spacer(),
-                    _buildMetricChip(
-                        '✓ Pushed', AppColors.success),
-                  ],
                 ],
               ),
               const SizedBox(height: 12),
@@ -349,13 +362,13 @@ class _StreminiAgentScreenState
         const SizedBox(height: 14),
 
         // Agent output
-        _buildSectionHeader('Agent Output',
-            'Summary of what the agent did and found'),
+        _buildSectionHeader('Corrected Code Output',
+            'Copy and apply this code manually in your repository'),
         const SizedBox(height: 10),
         _buildCodeBox(result.summary),
 
         // Raw payload
-        if (result.rawPayload.isNotEmpty) ...[
+        if (result.rawPayload.isNotEmpty && result.status == 'ERROR') ...[
           const SizedBox(height: 16),
           _buildSectionHeader(
               'Raw API Payload', 'Full response for debugging'),
