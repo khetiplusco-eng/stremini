@@ -51,13 +51,15 @@ class _AppWithContainerState extends ConsumerState<_AppWithContainer> {
 
       switch (call.method) {
         case 'startScanner':
-          print('Scanner button clicked - starting scanner');
+          debugPrint('Scanner button clicked - starting scanner');
           await notifier.startScanning();
           return true;
         case 'stopScanner':
-          print('Scanner button clicked - stopping scanner');
+          debugPrint('Scanner button clicked - stopping scanner');
           await notifier.stopScanning();
           return false;
+        default:
+          throw MissingPluginException('Unknown method: ${call.method}');
       }
     });
   }

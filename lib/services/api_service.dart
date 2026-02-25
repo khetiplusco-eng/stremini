@@ -7,6 +7,23 @@ class ApiService {
       "https://ai-keyboard-backend.vishwajeetadkine705.workers.dev";
   static const String githubAgentUrl =
       "https://agentic-github-debugger.vishwajeetadkine705.workers.dev";
+  static const Duration _requestTimeout = Duration(seconds: 20);
+
+  Future<http.Response> _postJson(
+    String url, {
+    required Map<String, dynamic> body,
+  }) {
+    return http
+        .post(
+          Uri.parse(url),
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(_requestTimeout);
+  }
 
   Future<void> initSession() async {}
   Future<void> clearSession() async {}
@@ -31,10 +48,9 @@ class ApiService {
           "name": fileName,
         };
       }
-      final response = await http.post(
-        Uri.parse("$baseUrl/chat/message"),
-        headers: {"Content-Type": "application/json", "Accept": "application/json"},
-        body: jsonEncode(bodyMap),
+      final response = await _postJson(
+        "$baseUrl/chat/message",
+        body: bodyMap,
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -62,14 +78,13 @@ class ApiService {
     List<Map<String, dynamic>>? history,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse("$baseUrl/chat/document"),
-        headers: {"Content-Type": "application/json", "Accept": "application/json"},
-        body: jsonEncode({
+      final response = await _postJson(
+        "$baseUrl/chat/document",
+        body: {
           "documentText": documentText,
           "question": question,
           "history": history ?? [],
-        }),
+        },
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -99,7 +114,7 @@ class ApiService {
         "Accept": "text/event-stream",
       });
       request.body = jsonEncode({"message": userMessage, "history": history ?? []});
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(_requestTimeout);
       if (streamedResponse.statusCode == 200) {
         await for (var chunk in streamedResponse.stream.transform(utf8.decoder)) {
           for (var line in chunk.split('\n')) {
@@ -149,17 +164,16 @@ class ApiService {
           );
         }
 
-        final response = await http.post(
-          Uri.parse(githubAgentUrl),
-          headers: {"Content-Type": "application/json", "Accept": "application/json"},
-          body: jsonEncode({
+        final response = await _postJson(
+          githubAgentUrl,
+          body: {
             "repoOwner": repoOwner,
             "repoName": repoName,
             "task": task,
             "history": history,
             "readFiles": visitedFiles,
             "iteration": iteration,
-          }),
+          },
         );
 
         if (response.statusCode != 200) {
@@ -236,10 +250,9 @@ class ApiService {
   // ── Security scan ─────────────────────────────────────────────────────────
   Future<SecurityScanResult> scanContent(String content) async {
     try {
-      final response = await http.post(
-        Uri.parse("$baseUrl/scan-content"),
-        headers: {"Content-Type": "application/json", "Accept": "application/json"},
-        body: jsonEncode({"content": content}),
+      final response = await _postJson(
+        "$baseUrl/scan-content",
+        body: {"content": content},
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

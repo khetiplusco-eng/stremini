@@ -1,7 +1,8 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 
 class ScreenScannerController {
   static const MethodChannel _channel =
@@ -23,7 +24,7 @@ class ScreenScannerController {
     try {
       await _channel.invokeMethod('requestAccessibilityPermission');
     } catch (e) {
-      print('Error requesting accessibility permission: $e');
+      debugPrint('Error requesting accessibility permission: $e');
     }
   }
 
@@ -33,7 +34,7 @@ class ScreenScannerController {
       final result = await _channel.invokeMethod('startScanning');
       return result == true;
     } catch (e) {
-      print('Error starting scan: $e');
+      debugPrint('Error starting scan: $e');
       return false;
     }
   }
@@ -43,7 +44,7 @@ class ScreenScannerController {
     try {
       await _channel.invokeMethod('stopScanning');
     } catch (e) {
-      print('Error stopping scan: $e');
+      debugPrint('Error stopping scan: $e');
     }
   }
 
@@ -85,7 +86,8 @@ class ScannerState {
 
 class ScannerStateNotifier extends StateNotifier<ScannerState> {
   final ScreenScannerController _controller;
-  late Future<void>? _statusCheckFuture;
+  Timer? _statusCheckTimer;
+  bool _isStatusCheckInFlight = false;
 
   ScannerStateNotifier(this._controller) : super(ScannerState()) {
     _checkPermission();
@@ -93,16 +95,22 @@ class ScannerStateNotifier extends StateNotifier<ScannerState> {
   }
 
   void _startStatusChecking() {
-    // Periodically check if scanning is still active
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 2));
-      await checkScanningStatus();
-      return true; // Continue looping
-    });
+    _statusCheckTimer?.cancel();
+    _statusCheckTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => checkScanningStatus(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _statusCheckTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkPermission() async {
     final hasPermission = await _controller.hasAccessibilityPermission();
+    if (!mounted) return;
     state = state.copyWith(hasPermission: hasPermission);
   }
 
@@ -129,6 +137,7 @@ class ScannerStateNotifier extends StateNotifier<ScannerState> {
     }
 
     final success = await _controller.startScanning();
+    if (!mounted) return;
     if (success) {
       state = state.copyWith(isActive: true, error: null);
     } else {
@@ -138,12 +147,20 @@ class ScannerStateNotifier extends StateNotifier<ScannerState> {
 
   Future<void> stopScanning() async {
     await _controller.stopScanning();
+    if (!mounted) return;
     state = state.copyWith(isActive: false);
   }
 
   Future<void> checkScanningStatus() async {
-    final isScanning = await _controller.isScanning();
-    state = state.copyWith(isActive: isScanning);
+    if (_isStatusCheckInFlight) return;
+    _isStatusCheckInFlight = true;
+    try {
+      final isScanning = await _controller.isScanning();
+      if (!mounted) return;
+      state = state.copyWith(isActive: isScanning);
+    } finally {
+      _isStatusCheckInFlight = false;
+    }
   }
 }
 
