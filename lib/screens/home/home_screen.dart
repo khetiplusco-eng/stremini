@@ -304,7 +304,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           'Allows AI to read screen context',
           Icons.accessibility_new,
           state.permissionStatus.hasAccessibility,
-          () => controller.requestAccessibilityPermission(),
+          () => _requestAccessibilityPermissionWithPrompt(controller),
         ),
         const SizedBox(height: 12),
         _buildSystemAccessCard(
@@ -575,7 +575,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             'Required for screen scanner to detect scams',
             Icons.accessibility_new,
             AppColors.emotional,
-            () => controller.requestAccessibilityPermission(),
+            () => _requestAccessibilityPermissionWithPrompt(controller),
           ),
         ],
         if (state.permissionStatus.needsMicrophone) ...[
@@ -591,6 +591,88 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ],
+    );
+  }
+
+
+  Future<void> _requestAccessibilityPermissionWithPrompt(
+    HomeController controller,
+  ) async {
+    final shouldContinue = await _showAccessibilityPermissionPrompt();
+    if (shouldContinue == true) {
+      await controller.requestAccessibilityPermission();
+    }
+  }
+
+  Future<bool?> _showAccessibilityPermissionPrompt() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.darkGray,
+          title: Text(
+            'Allow Accessibility Service',
+            style: AppTextStyles.body1.copyWith(
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Stremini uses Accessibility Service to help protect you from scams in real-time.',
+                  style: AppTextStyles.subtitle2.copyWith(color: AppColors.white),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Why this is required:',
+                  style: AppTextStyles.body3.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '• Detect suspicious links, popups, and scam patterns\n'
+                  '• Analyze visible screen text for fraud warnings\n'
+                  '• Trigger instant alerts while you browse or chat\n'
+                  '• Keep the floating AI assistant responsive across apps',
+                  style: AppTextStyles.subtitle2.copyWith(color: AppColors.white),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'You can disable this anytime from Accessibility Settings.',
+                  style: AppTextStyles.subtitle2.copyWith(
+                    color: AppColors.textGray,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Not now',
+                style: AppTextStyles.button.copyWith(color: AppColors.textGray),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.primary.withOpacity(0.2),
+              ),
+              child: Text(
+                'Continue',
+                style: AppTextStyles.button.copyWith(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
