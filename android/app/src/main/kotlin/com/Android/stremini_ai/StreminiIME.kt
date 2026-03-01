@@ -47,9 +47,37 @@ class StreminiIME : InputMethodService() {
 
     // State
     private var isShiftOn = false
+    private var isSymbolsMode = false
     private val letterKeyViews = mutableListOf<TextView>()
     private var shiftKeyView: View? = null
+    private var symbolsKeyView: TextView? = null
+    private var enterKeyView: TextView? = null
+    private var keyboardRootView: View? = null
     private var currentAppContext = "general"
+
+    private val alphaNumericKeyMap = mapOf(
+        R.id.key_q to "q", R.id.key_w to "w", R.id.key_e to "e", R.id.key_r to "r", R.id.key_t to "t",
+        R.id.key_y to "y", R.id.key_u to "u", R.id.key_i to "i", R.id.key_o to "o", R.id.key_p to "p",
+        R.id.key_a to "a", R.id.key_s to "s", R.id.key_d to "d", R.id.key_f to "f", R.id.key_g to "g",
+        R.id.key_h to "h", R.id.key_j to "j", R.id.key_k to "k", R.id.key_l to "l",
+        R.id.key_z to "z", R.id.key_x to "x", R.id.key_c to "c", R.id.key_v to "v", R.id.key_b to "b",
+        R.id.key_n to "n", R.id.key_m to "m",
+        R.id.key_1 to "1", R.id.key_2 to "2", R.id.key_3 to "3", R.id.key_4 to "4", R.id.key_5 to "5",
+        R.id.key_6 to "6", R.id.key_7 to "7", R.id.key_8 to "8", R.id.key_9 to "9", R.id.key_0 to "0",
+        R.id.key_dot to ".", R.id.key_comma to ","
+    )
+
+    private val symbolsKeyMap = mapOf(
+        R.id.key_q to "@", R.id.key_w to "#", R.id.key_e to "$", R.id.key_r to "%", R.id.key_t to "&",
+        R.id.key_y to "-", R.id.key_u to "+", R.id.key_i to "(", R.id.key_o to ")", R.id.key_p to "/",
+        R.id.key_a to "*", R.id.key_s to "\"", R.id.key_d to "'", R.id.key_f to ":", R.id.key_g to ";",
+        R.id.key_h to "!", R.id.key_j to "?", R.id.key_k to "~", R.id.key_l to "=",
+        R.id.key_z to "[", R.id.key_x to "]", R.id.key_c to "{", R.id.key_v to "}", R.id.key_b to "_",
+        R.id.key_n to "\\", R.id.key_m to "|",
+        R.id.key_1 to "1", R.id.key_2 to "2", R.id.key_3 to "3", R.id.key_4 to "4", R.id.key_5 to "5",
+        R.id.key_6 to "6", R.id.key_7 to "7", R.id.key_8 to "8", R.id.key_9 to "9", R.id.key_0 to "0",
+        R.id.key_dot to ".", R.id.key_comma to ","
+    )
 
     // Backspace Repeater
     private var isBackspacePressed = false
@@ -69,6 +97,7 @@ class StreminiIME : InputMethodService() {
 
     override fun onCreateInputView(): View {
         val view = layoutInflater.inflate(R.layout.keyboard_layout, null)
+        keyboardRootView = view
         setupKeyboardInteractions(view)
         return view
     }
@@ -76,31 +105,37 @@ class StreminiIME : InputMethodService() {
     private fun setupKeyboardInteractions(view: View) {
         letterKeyViews.clear()
         shiftKeyView = view.findViewById(R.id.key_shift)
+        symbolsKeyView = view.findViewById(R.id.key_symbols)
+        enterKeyView = view.findViewById(R.id.key_enter)
 
-        // 1. Map Keys to Characters
-        val keyMap = mapOf(
-            R.id.key_q to "q", R.id.key_w to "w", R.id.key_e to "e", R.id.key_r to "r", R.id.key_t to "t",
-            R.id.key_y to "y", R.id.key_u to "u", R.id.key_i to "i", R.id.key_o to "o", R.id.key_p to "p",
-            R.id.key_a to "a", R.id.key_s to "s", R.id.key_d to "d", R.id.key_f to "f", R.id.key_g to "g",
-            R.id.key_h to "h", R.id.key_j to "j", R.id.key_k to "k", R.id.key_l to "l",
-            R.id.key_z to "z", R.id.key_x to "x", R.id.key_c to "c", R.id.key_v to "v", R.id.key_b to "b",
-            R.id.key_n to "n", R.id.key_m to "m",
-            R.id.key_1 to "1", R.id.key_2 to "2", R.id.key_3 to "3", R.id.key_4 to "4", R.id.key_5 to "5",
-            R.id.key_6 to "6", R.id.key_7 to "7", R.id.key_8 to "8", R.id.key_9 to "9", R.id.key_0 to "0",
-            R.id.key_dot to ".", R.id.key_comma to ","
-        )
-
-        // 2. Attach High-Performance Listeners
-        keyMap.forEach { (id, char) ->
+        // 1. Attach High-Performance Listeners
+        alphaNumericKeyMap.forEach { (id, char) ->
             val keyView = view.findViewById<View>(id)
             if (keyView is TextView && char.length == 1 && char[0].isLetter()) {
                 letterKeyViews.add(keyView)
             }
-            keyView?.setOnTouchListener(createKeyTouchListener(char))
+            keyView?.setOnTouchListener(createKeyTouchListener(id))
         }
 
         // Space
-        view.findViewById<View>(R.id.key_space)?.setOnTouchListener(createKeyTouchListener(" "))
+        view.findViewById<View>(R.id.key_space)?.setOnTouchListener(createTextTouchListener(" "))
+
+        // Symbol/Alphabet toggle
+        symbolsKeyView?.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    feedback(v)
+                    animateKey(v, true)
+                }
+                MotionEvent.ACTION_UP -> {
+                    animateKey(v, false)
+                    isSymbolsMode = !isSymbolsMode
+                    updateKeyboardLabels()
+                }
+                MotionEvent.ACTION_CANCEL -> animateKey(v, false)
+            }
+            true
+        }
 
         // Backspace (Hold to delete)
         view.findViewById<View>(R.id.key_backspace)?.setOnTouchListener { v, event ->
@@ -160,20 +195,26 @@ class StreminiIME : InputMethodService() {
         }
 
         // AI Actions
+        view.findViewById<View>(R.id.action_undo)?.setOnClickListener {
+            feedback(it)
+            handleUndo()
+        }
         setupAiAction(view, R.id.action_improve, "correct")
         setupAiAction(view, R.id.action_complete, "complete")
         setupAiAction(view, R.id.action_tone, "tone")
+
+        updateKeyboardLabels()
     }
 
     // --- Performance Touch Listener ---
-    private fun createKeyTouchListener(text: String): View.OnTouchListener {
+    private fun createKeyTouchListener(keyId: Int): View.OnTouchListener {
         return View.OnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     // Instant feedback + instant commit for smoother typing response.
                     feedback(v)
                     animateKey(v, true)
-                    commitText(text)
+                    commitText(resolveKeyOutput(keyId))
                 }
                 MotionEvent.ACTION_UP -> animateKey(v, false)
                 MotionEvent.ACTION_CANCEL -> {
@@ -184,18 +225,47 @@ class StreminiIME : InputMethodService() {
         }
     }
 
+
+
+    private fun createTextTouchListener(text: String): View.OnTouchListener {
+        return View.OnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    feedback(v)
+                    animateKey(v, true)
+                    commitText(text)
+                }
+                MotionEvent.ACTION_UP -> animateKey(v, false)
+                MotionEvent.ACTION_CANCEL -> animateKey(v, false)
+            }
+            true
+        }
+    }
+
     // --- Core Logic ---
 
     private fun commitText(text: String) {
         val ic = currentInputConnection ?: return
-        val output = if (isShiftOn && text.length == 1) text.uppercase() else text
+        val output = if (!isSymbolsMode && isShiftOn && text.length == 1 && text[0].isLetter()) {
+            text.uppercase()
+        } else {
+            text
+        }
         
         ic.commitText(output, 1)
 
         // Auto-turn off shift after one char
-        if (isShiftOn) {
+        if (!isSymbolsMode && isShiftOn) {
             isShiftOn = false
-            updateShiftState()
+            updateKeyboardLabels()
+        }
+    }
+
+    private fun resolveKeyOutput(keyId: Int): String {
+        return if (isSymbolsMode) {
+            symbolsKeyMap[keyId] ?: ""
+        } else {
+            alphaNumericKeyMap[keyId] ?: ""
         }
     }
 
@@ -384,12 +454,57 @@ class StreminiIME : InputMethodService() {
     }
 
     private fun updateShiftState() {
-        val alpha = if (isShiftOn) 1.0f else 0.5f
+        val alpha = if (isShiftOn && !isSymbolsMode) 1.0f else 0.5f
         shiftKeyView?.alpha = alpha
         letterKeyViews.forEach { tv ->
-            val t = tv.text.toString()
-            if (t.isNotEmpty()) tv.text = if (isShiftOn) t.uppercase() else t.lowercase()
+            val keyId = tv.id
+            val base = alphaNumericKeyMap[keyId] ?: return@forEach
+            tv.text = if (isShiftOn && !isSymbolsMode) base.uppercase() else base.lowercase()
         }
+    }
+
+    private fun updateKeyboardLabels() {
+        alphaNumericKeyMap.keys.forEach { id ->
+            val view = keyboardRootView?.findViewById<TextView>(id)
+            val text = if (isSymbolsMode) {
+                symbolsKeyMap[id]
+            } else {
+                val base = alphaNumericKeyMap[id]
+                if (base != null && isShiftOn && base.length == 1 && base[0].isLetter()) base.uppercase() else base
+            }
+            if (view != null && !text.isNullOrEmpty()) {
+                view.text = text
+            }
+        }
+
+        symbolsKeyView?.text = if (isSymbolsMode) "ABC" else "?123"
+        shiftKeyView?.isEnabled = !isSymbolsMode
+        updateShiftState()
+        updateEnterKeyLabel(currentInputEditorInfo)
+    }
+
+    private fun updateEnterKeyLabel(info: EditorInfo?) {
+        val action = info?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
+        val label = when (action) {
+            EditorInfo.IME_ACTION_GO -> "go"
+            EditorInfo.IME_ACTION_SEARCH -> "search"
+            EditorInfo.IME_ACTION_SEND -> "send"
+            EditorInfo.IME_ACTION_NEXT -> "next"
+            EditorInfo.IME_ACTION_DONE -> "done"
+            else -> "return"
+        }
+        enterKeyView?.text = label
+    }
+
+    private fun handleUndo() {
+        val ic = currentInputConnection ?: return
+        val undone = ic.performContextMenuAction(android.R.id.undo)
+        if (undone) return
+
+        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT))
+        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_Z))
+        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Z))
+        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT))
     }
 
     private fun setupAiAction(root: View, id: Int, action: String) {
@@ -407,6 +522,8 @@ class StreminiIME : InputMethodService() {
             "com.google.android.gm" -> "email"
             else -> "general"
         }
+        updateEnterKeyLabel(info)
+        updateKeyboardLabels()
     }
 
     override fun onDestroy() {
