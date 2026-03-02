@@ -4,6 +4,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -49,6 +50,58 @@ class IMEBackendClient(
                     .ifBlank { resultJson.optString("text") }
                     .ifBlank { resultJson.optString("corrected") }
                 else -> resultJson.optString("corrected")
+            }
+        }
+    }
+
+    fun translateText(text: String, targetLanguage: String): Result<String> = runCatching {
+        val json = JSONObject().apply {
+            put("text", text)
+            put("targetLanguage", targetLanguage)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/keyboard/translate")
+            .post(json.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful || body.isBlank()) return@use ""
+            val resultJson = JSONObject(body)
+            resultJson.optString("translation")
+        }
+    }
+
+    fun fetchTranslationLanguages(): Result<List<Pair<String, String>>> = runCatching {
+        val request = Request.Builder()
+            .url("$baseUrl/keyboard/translate/languages")
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful || body.isBlank()) return@use emptyList()
+
+            val json = JSONObject(body)
+            val languagesArray = when {
+                json.has("languages") -> json.optJSONArray("languages")
+                json.has("data") -> json.optJSONArray("data")
+                else -> JSONArray(body)
+            } ?: return@use emptyList()
+
+            buildList {
+                for (i in 0 until languagesArray.length()) {
+                    val item = languagesArray.opt(i)
+                    when (item) {
+                        is JSONObject -> {
+                            val code = item.optString("code").ifBlank { item.optString("languageCode") }
+                            val name = item.optString("name").ifBlank { item.optString("language") }
+                            if (code.isNotBlank() && name.isNotBlank()) add(code to name)
+                        }
+                        is String -> if (item.isNotBlank()) add(item to item)
+                    }
+                }
             }
         }
     }

@@ -62,6 +62,18 @@ class StreminiIME : InputMethodService() {
     private var isAiFeatureMode = true
     private var aiActionJob: Job? = null
     private var lastAiActionTs = 0L
+    private var translationLanguages: List<Pair<String, String>> = emptyList()
+
+    private val defaultMajorLanguages = listOf(
+        "en" to "English",
+        "es" to "Spanish",
+        "fr" to "French",
+        "de" to "German",
+        "hi" to "Hindi",
+        "pt" to "Portuguese",
+        "ar" to "Arabic",
+        "ja" to "Japanese"
+    )
 
     private val alphaNumericKeyMap = mapOf(
         R.id.key_q to "q", R.id.key_w to "w", R.id.key_e to "e", R.id.key_r to "r", R.id.key_t to "t",
@@ -265,6 +277,7 @@ class StreminiIME : InputMethodService() {
         setupAiAction(view, R.id.action_improve, "correct")
         setupAiAction(view, R.id.action_complete, "complete")
         setupToneAction(view)
+        setupTranslateAction(view)
 
         updateKeyboardLabels()
         updateKeyboardModeUi()
@@ -658,6 +671,7 @@ class StreminiIME : InputMethodService() {
         val improve = root.findViewById<View>(R.id.action_improve)
         val complete = root.findViewById<View>(R.id.action_complete)
         val tone = root.findViewById<View>(R.id.action_tone)
+        val translate = root.findViewById<View>(R.id.action_translate)
         val modeToggle = root.findViewById<TextView>(R.id.action_undo)
         val clipboard = root.findViewById<View>(R.id.key_clipboard)
         val emoji = root.findViewById<View>(R.id.key_switch_keyboard)
@@ -665,6 +679,7 @@ class StreminiIME : InputMethodService() {
         improve?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
         complete?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
         tone?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
+        translate?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
 
         quickActions?.visibility = View.VISIBLE
         modeToggle?.text = if (isAiFeatureMode) "↻" else "✨ AI"
@@ -706,6 +721,78 @@ class StreminiIME : InputMethodService() {
                 true
             }
             popup.show()
+        }
+    }
+
+
+    private fun setupTranslateAction(root: View) {
+        root.findViewById<View>(R.id.action_translate)?.setOnClickListener { view ->
+            feedback(view)
+            showTranslateLanguagePicker(view)
+        }
+    }
+
+    private fun showTranslateLanguagePicker(anchor: View) {
+        serviceScope.launch(Dispatchers.IO) {
+            val source = if (translationLanguages.isNotEmpty()) {
+                translationLanguages
+            } else {
+                imeBackendClient.fetchTranslationLanguages().getOrNull().orEmpty()
+            }
+
+            val displayLanguages = source
+                .filter { (code, name) -> code.isNotBlank() && name.isNotBlank() }
+                .distinctBy { it.first.lowercase() }
+                .let { fetched ->
+                    if (fetched.isEmpty()) {
+                        defaultMajorLanguages
+                    } else {
+                        val majorByCode = defaultMajorLanguages.associateBy { it.first.lowercase() }
+                        val fetchedByCode = fetched.associateBy { it.first.lowercase() }
+                        defaultMajorLanguages.mapNotNull { fetchedByCode[it.first.lowercase()] ?: majorByCode[it.first.lowercase()] }
+                    }
+                }
+
+            translationLanguages = if (displayLanguages.isEmpty()) defaultMajorLanguages else displayLanguages
+
+            withContext(Dispatchers.Main) {
+                val popup = PopupMenu(this@StreminiIME, anchor)
+                translationLanguages.forEachIndexed { index, (code, name) ->
+                    popup.menu.add(Menu.NONE, index, index, "$name (${code.uppercase()})")
+                }
+
+                popup.setOnMenuItemClickListener { item ->
+                    val language = translationLanguages.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+                    translateCurrentText(language.first, language.second)
+                    true
+                }
+                popup.show()
+            }
+        }
+    }
+
+    private fun translateCurrentText(targetLanguageCode: String, targetLanguageName: String) {
+        val originalText = getCurrentText()
+        if (originalText.isBlank()) {
+            Toast.makeText(this, "Type something to translate", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, "Translating to $targetLanguageName...", Toast.LENGTH_SHORT).show()
+        serviceScope.launch(Dispatchers.IO) {
+            val translated = imeBackendClient.translateText(
+                text = originalText,
+                targetLanguage = targetLanguageCode
+            ).getOrNull().orEmpty()
+
+            withContext(Dispatchers.Main) {
+                if (translated.isBlank()) {
+                    Toast.makeText(this@StreminiIME, "Translation failed", Toast.LENGTH_SHORT).show()
+                    return@withContext
+                }
+                replaceFullText(translated)
+                Toast.makeText(this@StreminiIME, "Translated to $targetLanguageName", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

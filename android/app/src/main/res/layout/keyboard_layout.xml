@@ -45,6 +45,12 @@
                 style="@style/KeyboardChip"
                 android:text="🎨 Tone Changer"
                 android:background="@drawable/chip_background"/>
+
+            <TextView
+                android:id="@+id/action_translate"
+                style="@style/KeyboardChip"
+                android:text="🌍 Translate"
+                android:background="@drawable/chip_background"/>
                 
         </LinearLayout>
     </HorizontalScrollView>
