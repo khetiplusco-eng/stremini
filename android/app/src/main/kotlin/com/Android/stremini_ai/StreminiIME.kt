@@ -22,19 +22,14 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.*
-import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
 class StreminiIME : InputMethodService() {
 
     companion object {
         private const val TAG = "StreminiIME"
-        private const val BASE_URL = "https://ai-keyboard-backend.vishwajeetadkine705.workers.dev" // Ensure this matches your worker
         private const val PREFS_NAME = "keyboard_prefs"
         private const val CLIPBOARD_HISTORY_KEY = "clipboard_history"
         private const val CLIPBOARD_HISTORY_LIMIT = 12
@@ -45,11 +40,7 @@ class StreminiIME : InputMethodService() {
     private lateinit var clipboardManager: ClipboardManager
     private lateinit var sharedPrefs: SharedPreferences
 
-    // Network Client (Optimized for Speed)
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS) // Fail fast if network is bad
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+    private val imeBackendClient = IMEBackendClient()
 
     // Animation Helpers (Pre-allocated for performance)
     private val pressInterpolator = DecelerateInterpolator()
@@ -387,52 +378,19 @@ class StreminiIME : InputMethodService() {
 
         aiActionJob = serviceScope.launch(Dispatchers.IO) {
             try {
-                // Prepare Request
-                val json = JSONObject().apply {
-                    put("text", originalText)
-                    put("appContext", currentAppContext)
-                    if (actionType == "tone") {
-                        put("tone", selectedTone)
-                    }
-                    // If backend supports "complete_only_new" flag, add it here.
-                    // Otherwise we handle deduplication locally.
-                }
+                val resultText = imeBackendClient.requestKeyboardAction(
+                    originalText = originalText,
+                    appContext = currentAppContext,
+                    actionType = actionType,
+                    selectedTone = selectedTone,
+                ).getOrNull().orEmpty()
 
-                val endpoint = when(actionType) {
-                    "complete" -> "complete"
-                    "tone" -> "tone"
-                    else -> "correct"
-                }
-
-                val request = Request.Builder()
-                    .url("$BASE_URL/keyboard/$endpoint")
-                    .post(json.toString().toRequestBody("application/json".toMediaType()))
-                    .build()
-
-                val response = client.newCall(request).execute()
-                val responseBody = response.body?.string()
-
-                if (response.isSuccessful && !responseBody.isNullOrEmpty()) {
-                    val resultJson = JSONObject(responseBody)
-                    
-                    val resultText = when (actionType) {
-                        "complete" -> resultJson.optString("completion")
-                        "tone" -> {
-                            resultJson.optString("rewritten")
-                                .ifBlank { resultJson.optString("result") }
-                                .ifBlank { resultJson.optString("text") }
-                                .ifBlank { resultJson.optString("corrected") }
-                        }
-                        else -> resultJson.optString("corrected")
-                    }
-
-                    if (resultText.isNotEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            if (actionType == "complete") {
-                                smartAppend(originalText, resultText)
-                            } else {
-                                replaceFullText(resultText)
-                            }
+                if (resultText.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        if (actionType == "complete") {
+                            smartAppend(originalText, resultText)
+                        } else {
+                            replaceFullText(resultText)
                         }
                     }
                 }

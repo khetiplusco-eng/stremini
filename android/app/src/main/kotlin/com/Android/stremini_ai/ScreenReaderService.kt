@@ -22,8 +22,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.*
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.ArrayDeque
@@ -67,9 +65,7 @@ class ScreenReaderService : AccessibilityService() {
     }
 
     private lateinit var windowManager: WindowManager
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val screenAnalysisClient = ScreenAnalysisClient()
 
     val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var scanningOverlay: View? = null
@@ -1404,36 +1400,28 @@ class ScreenReaderService : AccessibilityService() {
     }
 
     private suspend fun analyzeScreenContent(content: String): ScanResult = withContext(Dispatchers.IO) {
-        try {
-            val requestBody = JSONObject().apply {
-                put("text", content.take(5000))
-            }.toString().toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url("https://ai-keyboard-backend.vishwajeetadkine705.workers.dev/security/analyze/text")
-                .post(requestBody)
-                .build()
-
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext performLocalAnalysis(content)
-
-            val responseData = response.body?.string() ?: ""
-            val json = JSONObject(responseData)
-            val isThreat = json.optBoolean("is_threat", false)
-            val detailsArray = json.optJSONArray("details")
-            val tags = mutableListOf<TaggedElement>()
-            if (detailsArray != null) {
-                for (i in 0 until detailsArray.length()) {
-                    val detail = detailsArray.getString(i)
-                    tags.add(TaggedElement("Alert", DANGER_TEXT_COLOR, detail, null, detail))
+        screenAnalysisClient.analyzeText(content)
+            .map { json ->
+                val isThreat = json.optBoolean("is_threat", false)
+                val detailsArray = json.optJSONArray("details")
+                val tags = mutableListOf<TaggedElement>()
+                if (detailsArray != null) {
+                    for (i in 0 until detailsArray.length()) {
+                        val detail = detailsArray.getString(i)
+                        tags.add(TaggedElement("Alert", DANGER_TEXT_COLOR, detail, null, detail))
+                    }
                 }
+                ScanResult(
+                    !isThreat,
+                    json.optString("type", "safe"),
+                    "Confidence: ${json.optDouble("confidence", 0.0)}",
+                    tags
+                )
             }
-            ScanResult(!isThreat, json.optString("type", "safe"),
-                "Confidence: ${json.optDouble("confidence", 0.0)}", tags)
-        } catch (e: Exception) {
-            Log.e(TAG, "Analysis error", e)
-            performLocalAnalysis(content)
-        }
+            .getOrElse {
+                Log.e(TAG, "Analysis error", it)
+                performLocalAnalysis(content)
+            }
     }
 
     private fun displayTagsForAllThreats(contentList: List<ContentWithPosition>, result: ScanResult) {

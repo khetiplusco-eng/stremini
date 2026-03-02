@@ -2,8 +2,6 @@ package com.Android.stremini_ai
 
 import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.os.Build
 
 /**
  * Static BroadcastReceiver for notification action buttons.
@@ -11,14 +9,9 @@ import android.os.Build
  * from the background without opening the app.
  */
 class NotificationActionReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) {
-        val serviceIntent = Intent(context, ChatOverlayService::class.java).apply {
-            action = intent?.action
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
-        }
+    private val dispatcher = OverlayServiceIntentDispatcher()
+
+    override fun onReceive(context: Context, intent: android.content.Intent?) {
+        dispatcher.dispatch(context, intent?.action)
     }
 }

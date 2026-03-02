@@ -1,15 +1,12 @@
 package com.Android.stremini_ai
 
-import android.app.Activity
-import android.content.Intent
 import android.os.Bundle
-import android.provider.Settings
-import android.view.inputmethod.InputMethodManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
 class KeyboardSettingsActivity : AppCompatActivity() {
 
+    private lateinit var coordinator: KeyboardSettingsCoordinator
     private lateinit var toggleKeyboard: Switch
     private lateinit var btnEnableKeyboard: Button
     private lateinit var btnSelectKeyboard: Button
@@ -19,6 +16,7 @@ class KeyboardSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_keyboard_settings)
+        coordinator = KeyboardSettingsCoordinator(this)
 
         initViews()
         setupListeners()
@@ -89,55 +87,20 @@ class KeyboardSettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun isKeyboardEnabled(): Boolean {
-        val imeManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        val enabledInputMethods = imeManager.enabledInputMethodList
-        val packageName = packageName
-        
-        return enabledInputMethods.any { 
-            it.packageName == packageName 
-        }
-    }
+    private fun isKeyboardEnabled(): Boolean = coordinator.isKeyboardEnabled(packageName)
 
-    private fun isKeyboardSelected(): Boolean {
-        val imeManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        val currentInputMethod = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.DEFAULT_INPUT_METHOD
-        )
-        
-        return currentInputMethod?.contains(packageName) == true
-    }
+    private fun isKeyboardSelected(): Boolean = coordinator.isKeyboardSelected(packageName)
 
     private fun openKeyboardSettings() {
-        val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
-        
-        Toast.makeText(
-            this,
-            "Find 'Stremini AI Keyboard' and enable it",
-            Toast.LENGTH_LONG
-        ).show()
+        coordinator.openKeyboardSettings()
+        Toast.makeText(this, "Find 'Stremini AI Keyboard' and enable it", Toast.LENGTH_LONG).show()
     }
 
-    private fun showInputMethodPicker() {
-        val imeManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        imeManager.showInputMethodPicker()
-    }
+    private fun showInputMethodPicker() = coordinator.showInputMethodPicker()
 
     private fun applyTheme(theme: String) {
-        // Save theme preference
-        getSharedPreferences("keyboard_prefs", MODE_PRIVATE)
-            .edit()
-            .putString("theme", theme)
-            .apply()
-        
-        Toast.makeText(
-            this,
-            "Theme changed to $theme",
-            Toast.LENGTH_SHORT
-        ).show()
+        coordinator.saveTheme(theme)
+        Toast.makeText(this, "Theme changed to $theme", Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {

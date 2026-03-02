@@ -18,15 +18,9 @@ import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val microphonePermissionRequestCode = 1001
-    private val channelName = "stremini.chat.overlay"
-    private val eventChannelName = "stremini.chat.overlay/events"
-    private val keyboardChannelName = "stremini.keyboard"
-    private val scannerChannelName = "stremini.screen.scanner"
-    
     private var eventSink: EventChannel.EventSink? = null
 
     private val eventReceiver = object : BroadcastReceiver() {
@@ -54,138 +48,32 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        
-        // Scanner method channel
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.Android.stremini_ai").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "startScanner" -> {
-                    result.success(true)
-                }
-                "stopScanner" -> {
-                    result.success(true)
-                }
-                else -> result.notImplemented()
-            }
-        }
-        
-        // Overlay channel for bubble controls
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "hasOverlayPermission" -> {
-                    result.success(hasOverlayPermission())
-                }
-                "requestOverlayPermission" -> {
-                    requestOverlayPermissionSafe()
-                    result.success(true)
-                }
-                "hasAccessibilityPermission" -> {
-                    result.success(isAccessibilityServiceEnabled())
-                }
-                "requestAccessibilityPermission" -> {
-                    requestAccessibilityPermissionSafe()
-                    result.success(true)
-                }
-                "hasMicrophonePermission" -> {
-                    result.success(hasMicrophonePermission())
-                }
-                "requestMicrophonePermission" -> {
-                    requestMicrophonePermission()
-                    result.success(true)
-                }
-                "startScreenScan" -> {
-                    if (isAccessibilityServiceEnabled()) {
-                        startScreenScan()
-                        result.success(true)
-                    } else {
-                        result.error("NO_PERMISSION", "Accessibility service not enabled", null)
-                    }
-                }
-                "startOverlayService" -> {
-                    startOverlayServiceSafe()
-                    result.success(true)
-                }
-                "stopOverlayService" -> {
-                    val intent = Intent(this, ChatOverlayService::class.java)
-                    stopService(intent)
-                    result.success(true)
-                }
-                else -> result.notImplemented()
-            }
-        }
 
-
-        // Scanner channel used by scanner_provider.dart
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, scannerChannelName).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "hasAccessibilityPermission" -> {
-                    result.success(isAccessibilityServiceEnabled())
-                }
-                "requestAccessibilityPermission" -> {
-                    requestAccessibilityPermissionSafe()
-                    result.success(true)
-                }
-                "startScanning" -> {
-                    if (isAccessibilityServiceEnabled()) {
-                        startScreenScan()
-                        result.success(true)
-                    } else {
-                        result.error("NO_PERMISSION", "Accessibility service not enabled", null)
-                    }
-                }
-                "stopScanning" -> {
-                    stopScreenScan()
-                    result.success(true)
-                }
-                "isScanning" -> {
-                    result.success(ScreenReaderService.isScanningActive())
-                }
-                else -> result.notImplemented()
-            }
-        }
-
-        // Keyboard channel
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, keyboardChannelName).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "isKeyboardEnabled" -> {
-                    result.success(isKeyboardEnabled())
-                }
-                "isKeyboardSelected" -> {
-                    result.success(isKeyboardSelected())
-                }
-                "openKeyboardSettings" -> {
-                    openKeyboardSettings()
-                    result.success(true)
-                }
-                "showKeyboardPicker" -> {
-                    showKeyboardPicker()
-                    result.success(true)
-                }
-                "openKeyboardSettingsActivity" -> {
-                    try {
-                        val intent = Intent(this, KeyboardSettingsActivity::class.java)
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(intent)
-                        result.success(true)
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error opening keyboard settings", e)
-                        result.error("ERROR", "Failed to open keyboard settings: ${e.message}", null)
-                    }
-                }
-                else -> result.notImplemented()
-            }
-        }
-
-        // Event channel for async updates
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventChannelName).setStreamHandler(
-            object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    eventSink = events
-                }
-                override fun onCancel(arguments: Any?) {
-                    eventSink = null
-                }
-            }
-        )
+        MainActivityChannelRegistry(
+            activity = this,
+            actions = MainActivityChannelRegistry.Actions(
+                hasOverlayPermission = ::hasOverlayPermission,
+                requestOverlayPermission = ::requestOverlayPermissionSafe,
+                hasAccessibilityPermission = ::isAccessibilityServiceEnabled,
+                requestAccessibilityPermission = ::requestAccessibilityPermissionSafe,
+                hasMicrophonePermission = ::hasMicrophonePermission,
+                requestMicrophonePermission = ::requestMicrophonePermission,
+                startScreenScan = ::startScreenScan,
+                stopScreenScan = ::stopScreenScan,
+                startOverlayService = ::startOverlayServiceSafe,
+                stopOverlayService = { stopService(Intent(this, ChatOverlayService::class.java)) },
+                isKeyboardEnabled = ::isKeyboardEnabled,
+                isKeyboardSelected = ::isKeyboardSelected,
+                openKeyboardSettings = ::openKeyboardSettings,
+                showKeyboardPicker = ::showKeyboardPicker,
+                openKeyboardSettingsActivity = {
+                    val intent = Intent(this, KeyboardSettingsActivity::class.java)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                },
+                setEventSink = { sink -> eventSink = sink },
+            )
+        ).register(flutterEngine)
     }
 
     private fun hasOverlayPermission(): Boolean {

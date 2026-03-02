@@ -1,15 +1,9 @@
 package com.Android.stremini_ai
 
-import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * AgenticStepRunner
@@ -26,13 +20,9 @@ import java.util.concurrent.TimeUnit
 object AgenticStepRunner {
 
     private const val TAG = "AgenticStepRunner"
-    private const val BACKEND_URL = "https://ai-keyboard-backend.vishwajeetadkine705.workers.dev"
     private const val MAX_STEPS = 20
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .build()
+    private val backendClient = AgenticBackendClient()
 
     data class RunResult(
         val success: Boolean,
@@ -76,7 +66,7 @@ object AgenticStepRunner {
 
             // 3. Call backend
             val response = try {
-                callBackend("/voice-command", payload)
+                backendClient.callVoiceCommand(payload)
             } catch (e: Exception) {
                 Log.e(TAG, "Backend call failed: ${e.message}", e)
                 onStatusUpdate("Network error: ${e.message}")
@@ -170,7 +160,7 @@ object AgenticStepRunner {
             put("history", JSONArray())
         }
 
-        val response = try { callBackend("/voice-command", payload) }
+        val response = try { backendClient.callVoiceCommand(payload) }
         catch (e: Exception) { return@withContext RunResult(false, 1, "Network error", e.message) }
 
         val actions = response.optJSONArray("actions") ?: JSONArray()
@@ -188,27 +178,6 @@ object AgenticStepRunner {
         }
 
         RunResult(true, 1, doneSummary)
-    }
-
-    // -----------------------------------------------------------------------
-    // HTTP helper
-    // -----------------------------------------------------------------------
-
-    private fun callBackend(endpoint: String, payload: JSONObject): JSONObject {
-        val body = payload.toString().toRequestBody("application/json".toMediaType())
-        val request = Request.Builder()
-            .url("$BACKEND_URL$endpoint")
-            .post(body)
-            .addHeader("Content-Type", "application/json")
-            .build()
-        val response = client.newCall(request).execute()
-        val raw = response.body?.string() ?: "{}"
-        return if (response.isSuccessful) {
-            runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
-        } else {
-            Log.e(TAG, "Backend error ${response.code}: $raw")
-            JSONObject().apply { put("error", "HTTP ${response.code}") }
-        }
     }
 
     // -----------------------------------------------------------------------
