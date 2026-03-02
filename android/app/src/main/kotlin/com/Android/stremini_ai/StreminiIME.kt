@@ -19,6 +19,7 @@ import android.view.inputmethod.InputConnection
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.PopupMenu
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.*
@@ -58,6 +59,7 @@ class StreminiIME : InputMethodService() {
     private val keyTextViewCache = HashMap<Int, TextView>()
     private var currentAppContext = "general"
     private var selectedTone = "professional"
+    private var isAiFeatureMode = true
     private var aiActionJob: Job? = null
     private var lastAiActionTs = 0L
 
@@ -205,7 +207,7 @@ class StreminiIME : InputMethodService() {
             true
         }
 
-        // Keyboard switcher (similar to Android's globe button)
+        // Emoji/System panel key (normal mode only)
         view.findViewById<View>(R.id.key_switch_keyboard)?.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -214,7 +216,9 @@ class StreminiIME : InputMethodService() {
                 }
                 MotionEvent.ACTION_UP -> {
                     animateKey(v, false)
-                    showKeyboardSwitcher()
+                    if (!isAiFeatureMode) {
+                        showKeyboardSwitcher()
+                    }
                 }
                 MotionEvent.ACTION_CANCEL -> animateKey(v, false)
             }
@@ -233,7 +237,9 @@ class StreminiIME : InputMethodService() {
                     }
                     MotionEvent.ACTION_UP -> {
                         animateKey(v, false)
-                        handleClipboardPaste()
+                        if (!isAiFeatureMode) {
+                            handleClipboardPaste()
+                        }
                     }
                     MotionEvent.ACTION_CANCEL -> animateKey(v, false)
                 }
@@ -258,13 +264,14 @@ class StreminiIME : InputMethodService() {
         // AI Actions
         view.findViewById<View>(R.id.action_undo)?.setOnClickListener {
             feedback(it)
-            handleUndo()
+            toggleKeyboardMode()
         }
         setupAiAction(view, R.id.action_improve, "correct")
         setupAiAction(view, R.id.action_complete, "complete")
         setupToneAction(view)
 
         updateKeyboardLabels()
+        updateKeyboardModeUi()
     }
 
     // --- Performance Touch Listener ---
@@ -636,6 +643,37 @@ class StreminiIME : InputMethodService() {
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT))
     }
 
+    private fun toggleKeyboardMode() {
+        isAiFeatureMode = !isAiFeatureMode
+        updateKeyboardModeUi()
+        Toast.makeText(
+            this,
+            if (isAiFeatureMode) "AI tools enabled" else "Normal clipboard/emoji mode",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun updateKeyboardModeUi() {
+        val root = keyboardRootView ?: return
+        val quickActions = root.findViewById<LinearLayout>(R.id.quick_actions_container)
+        val improve = root.findViewById<View>(R.id.action_improve)
+        val complete = root.findViewById<View>(R.id.action_complete)
+        val tone = root.findViewById<View>(R.id.action_tone)
+        val modeToggle = root.findViewById<TextView>(R.id.action_undo)
+        val clipboard = root.findViewById<View>(R.id.key_clipboard)
+        val emoji = root.findViewById<View>(R.id.key_switch_keyboard)
+
+        improve?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
+        complete?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
+        tone?.visibility = if (isAiFeatureMode) View.VISIBLE else View.GONE
+
+        quickActions?.visibility = View.VISIBLE
+        modeToggle?.text = if (isAiFeatureMode) "↻" else "✨ AI"
+
+        clipboard?.visibility = if (isAiFeatureMode) View.GONE else View.VISIBLE
+        emoji?.visibility = if (isAiFeatureMode) View.GONE else View.VISIBLE
+    }
+
     private fun setupAiAction(root: View, id: Int, action: String) {
         root.findViewById<View>(id)?.setOnClickListener { 
             feedback(it)
@@ -681,6 +719,7 @@ class StreminiIME : InputMethodService() {
         }
         updateEnterKeyLabel(info)
         updateKeyboardLabels()
+        updateKeyboardModeUi()
     }
 
     override fun onDestroy() {

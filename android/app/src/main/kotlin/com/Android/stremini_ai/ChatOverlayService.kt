@@ -543,7 +543,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
         autoTaskerParams = WindowManager.LayoutParams(
-            dpToPx(320f), dpToPx(480f), typeParam,
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, typeParam,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply { gravity = Gravity.CENTER }
@@ -554,13 +554,13 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             updateMenuItemsColor()
         }
         autoTaskerView?.findViewById<ImageView>(R.id.btn_start_listening)?.setOnClickListener {
+            keepListeningLoop = true
             startVoiceCapture()
         }
 
         windowManager.addView(autoTaskerView, autoTaskerParams)
         isAutoTaskerVisible = true
-        keepListeningLoop = true
-        startVoiceCapture()
+        keepListeningLoop = false
         return true
     }
 
