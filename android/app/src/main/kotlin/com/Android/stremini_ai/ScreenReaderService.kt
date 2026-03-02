@@ -66,6 +66,7 @@ class ScreenReaderService : AccessibilityService() {
 
     private lateinit var windowManager: WindowManager
     private val screenAnalysisClient = ScreenAnalysisClient()
+    private val commandRouter = ScreenReaderCommandRouter()
 
     val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var scanningOverlay: View? = null
@@ -366,249 +367,55 @@ class ScreenReaderService : AccessibilityService() {
     // ==========================================
 
     suspend fun executeFullDeviceCommand(command: String): Boolean {
-        val normalized = command.trim().lowercase()
-        if (normalized.isBlank()) return false
-
         return withContext(Dispatchers.Main) {
-            try {
-                when {
-                    // --- GLOBAL NAVIGATION ---
-                    normalized.contains("go home") || normalized == "home" ->
-                        performGlobalAction(GLOBAL_ACTION_HOME)
-
-                    normalized.contains("go back") || normalized == "back" ->
-                        performGlobalAction(GLOBAL_ACTION_BACK)
-
-                    normalized.contains("recent apps") || normalized.contains("app switcher") ->
-                        performGlobalAction(GLOBAL_ACTION_RECENTS)
-
-                    normalized.contains("open notifications") || normalized.contains("notification bar") ->
-                        performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-
-                    normalized.contains("quick settings") ->
-                        performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
-
-                    normalized.contains("lock screen") || normalized.contains("lock phone") ->
-                        performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
-
-                    normalized.contains("take screenshot") || normalized.contains("screenshot") ->
-                        takeScreenshot()
-
-                    normalized.contains("power menu") ->
-                        performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
-
-                    // --- SCROLL COMMANDS ---
-                    normalized.contains("scroll down") ->
-                        performScroll(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-
-                    normalized.contains("scroll up") ->
-                        performScroll(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-
-                    normalized.contains("scroll to top") ->
-                        scrollToTop()
-
-                    normalized.contains("scroll to bottom") ->
-                        scrollToBottom()
-
-                    // --- TAP / CLICK ---
-                    normalized.startsWith("tap ") || normalized.startsWith("click ") -> {
-                        val label = normalized.removePrefix("tap ").removePrefix("click ").trim()
-                        clickNodeByText(label)
-                    }
-
-                    normalized.startsWith("long press ") || normalized.startsWith("long tap ") -> {
-                        val label = normalized.removePrefix("long press ").removePrefix("long tap ").trim()
-                        longClickNodeByText(label)
-                    }
-
-                    // --- SWIPE GESTURES ---
-                    normalized.contains("swipe up") -> performSwipe("up")
-                    normalized.contains("swipe down") -> performSwipe("down")
-                    normalized.contains("swipe left") -> performSwipe("left")
-                    normalized.contains("swipe right") -> performSwipe("right")
-
-                    // --- TEXT INPUT ---
-                    normalized.startsWith("type ") -> {
-                        val value = command.trim().substringAfter("type ").trim()
-                        typeIntoFocusedField(value)
-                    }
-
-                    normalized.startsWith("search for ") || normalized.startsWith("search ") -> {
-                        val query = command.trim()
-                            .removePrefix("search for ")
-                            .removePrefix("Search for ")
-                            .removePrefix("search ")
-                            .removePrefix("Search ")
-                            .trim()
-                        performSearch(query)
-                    }
-
-                    normalized.startsWith("fill ") && normalized.contains(" with ") -> {
-                        val parts = normalized.removePrefix("fill ").split(" with ", limit = 2)
-                        if (parts.size == 2) fillFieldByHint(parts[0].trim(), parts[1].trim())
-                        else false
-                    }
-
-                    // --- APP CONTROL ---
-                    normalized.startsWith("open ") || normalized.startsWith("launch ") -> {
-                        val appName = normalized.removePrefix("open ").removePrefix("launch ").trim()
-                        openAppByName(appName)
-                    }
-
-                    normalized.startsWith("close ") && (normalized.contains("app") || normalized.contains("tab")) -> {
-                        closeCurrentApp()
-                    }
-
-                    normalized.contains("force stop") || normalized.contains("kill app") -> {
-                        val appName = normalized
-                            .removePrefix("force stop ")
-                            .removePrefix("kill app ")
-                            .trim()
-                        openAppSettings(appName)
-                    }
-
-                    // --- SYSTEM SETTINGS ---
-                    normalized.contains("open wifi") || normalized.contains("wifi settings") ->
-                        openSystemSettings(android.provider.Settings.ACTION_WIFI_SETTINGS)
-
-                    normalized.contains("open bluetooth") || normalized.contains("bluetooth settings") ->
-                        openSystemSettings("android.settings.BLUETOOTH_SETTINGS")
-
-                    normalized.contains("open settings") ->
-                        openSystemSettings(android.provider.Settings.ACTION_SETTINGS)
-
-                    normalized.contains("open display settings") ->
-                        openSystemSettings(android.provider.Settings.ACTION_DISPLAY_SETTINGS)
-
-                    normalized.contains("open sound settings") ->
-                        openSystemSettings(android.provider.Settings.ACTION_SOUND_SETTINGS)
-
-                    normalized.contains("open battery settings") ->
-                        openSystemSettings(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS)
-
-                    normalized.contains("open location settings") ->
-                        openSystemSettings(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-
-                    normalized.contains("open app settings") || normalized.contains("app permissions") -> {
-                        val appName = normalized
-                            .removePrefix("open app settings for ")
-                            .removePrefix("open app settings ")
-                            .trim()
-                        openAppSettings(appName)
-                    }
-
-                    normalized.contains("open developer options") ->
-                        openSystemSettings(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-
-                    // --- VOLUME CONTROL ---
-                    normalized.contains("volume up") -> adjustVolume(true)
-                    normalized.contains("volume down") -> adjustVolume(false)
-                    normalized.contains("mute") -> muteDevice()
-                    normalized.contains("unmute") -> unmuteDevice()
-
-                    // --- BRIGHTNESS ---
-                    normalized.contains("increase brightness") -> adjustBrightness(true)
-                    normalized.contains("decrease brightness") || normalized.contains("reduce brightness") ->
-                        adjustBrightness(false)
-
-                    // --- WHATSAPP ---
-                    normalized.contains("whatsapp") && (normalized.contains("message") || normalized.contains("send")) -> {
-                        val contact = extractContact(command)
-                        val message = extractMessage(command)
-                        if (contact.isNotBlank())
-                            automateWhatsAppMessage(contact, message)
-                        else
-                            false
-                    }
-
-                    // --- CALLS ---
-                    normalized.startsWith("call ") -> {
-                        val name = command.trim().substringAfter("call ").trim()
-                        makePhoneCall(name)
-                    }
-
-                    normalized.contains("answer call") || normalized.contains("pick up") ->
-                        answerIncomingCall()
-
-                    normalized.contains("decline call") || normalized.contains("reject call") ->
-                        declineIncomingCall()
-
-                    // --- BROWSER ---
-                    normalized.startsWith("open website ") || normalized.startsWith("go to ") ||
-                    normalized.startsWith("browse to ") -> {
-                        val url = command.trim()
-                            .removePrefix("open website ")
-                            .removePrefix("go to ")
-                            .removePrefix("browse to ")
-                            .trim()
-                        openUrl(url)
-                    }
-
-                    // --- MEDIA CONTROLS ---
-                    normalized.contains("play") && (normalized.contains("music") || normalized.contains("video")) ->
-                        sendMediaAction(Intent.ACTION_MEDIA_BUTTON)
-
-                    normalized.contains("pause") || normalized.contains("stop music") ->
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)
-
-                    normalized.contains("next song") || normalized.contains("next track") ->
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
-
-                    normalized.contains("previous song") || normalized.contains("previous track") ->
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-
-                    // --- CAMERA ---
-                    normalized.contains("open camera") ->
-                        openAppByPackage("com.android.camera2")
-                            .let { if (!it) openAppByName("camera") else it }
-
-                    normalized.contains("take photo") || normalized.contains("take picture") ->
-                        clickNodeByText("shutter") || clickNodeByContentDesc("take photo")
-
-                    // --- KEYBOARD / TEXT ACTIONS ---
-                    normalized.contains("select all") -> performSelectAll()
-                    normalized.contains("copy") -> performCopy()
-                    normalized.contains("paste") -> performPaste()
-                    normalized.contains("cut") -> performCut()
-                    normalized.contains("undo") -> performUndo()
-
-                    // --- READING CONTENT ---
-                    normalized.contains("read screen") || normalized.contains("what is on screen") -> {
-                        readScreenContent()
-                        true
-                    }
-
-                    normalized.startsWith("find ") -> {
-                        val target = normalized.removePrefix("find ").trim()
-                        findAndHighlight(target)
-                    }
-
-                    // --- SUBMIT / CONFIRM ---
-                    normalized.contains("press enter") || normalized.contains("submit") ||
-                    normalized.contains("confirm") ->
-                        pressEnterKey()
-
-                    normalized.contains("cancel") || normalized.contains("dismiss") ->
-                        clickNodeByText("cancel") || clickNodeByText("dismiss") || clickNodeByText("no")
-
-                    // --- DRAG & DROP ---
-                    normalized.startsWith("drag ") && normalized.contains(" to ") -> {
-                        val parts = normalized.removePrefix("drag ").split(" to ", limit = 2)
-                        if (parts.size == 2) dragFromTo(parts[0].trim(), parts[1].trim())
-                        else false
-                    }
-
-                    // --- PINCH / ZOOM ---
-                    normalized.contains("zoom in") -> performZoom(true)
-                    normalized.contains("zoom out") -> performZoom(false)
-
-                    else -> {
-                        Log.w(TAG, "Unknown command: $command")
-                        false
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Command execution failed: $command", e)
+            runCatching {
+                commandRouter.execute(
+                    command = command,
+                    actions = ScreenReaderCommandRouter.Actions(
+                        globalAction = ::performGlobalAction,
+                        takeScreenshot = ::takeScreenshot,
+                        performScroll = ::performScroll,
+                        scrollToTop = ::scrollToTop,
+                        scrollToBottom = ::scrollToBottom,
+                        clickNodeByText = ::clickNodeByText,
+                        longClickNodeByText = ::longClickNodeByText,
+                        performSwipe = ::performSwipe,
+                        typeIntoFocusedField = ::typeIntoFocusedField,
+                        performSearch = ::performSearch,
+                        fillFieldByHint = ::fillFieldByHint,
+                        openAppByName = ::openAppByName,
+                        closeCurrentApp = ::closeCurrentApp,
+                        openAppSettings = ::openAppSettings,
+                        openSystemSettings = ::openSystemSettings,
+                        adjustVolume = ::adjustVolume,
+                        muteDevice = ::muteDevice,
+                        unmuteDevice = ::unmuteDevice,
+                        adjustBrightness = ::adjustBrightness,
+                        automateWhatsAppMessage = ::automateWhatsAppMessage,
+                        extractContact = ::extractContact,
+                        extractMessage = ::extractMessage,
+                        makePhoneCall = ::makePhoneCall,
+                        answerIncomingCall = ::answerIncomingCall,
+                        declineIncomingCall = ::declineIncomingCall,
+                        openUrl = ::openUrl,
+                        sendMediaAction = ::sendMediaAction,
+                        sendMediaKey = ::sendMediaKey,
+                        openAppByPackage = ::openAppByPackage,
+                        clickNodeByContentDesc = ::clickNodeByContentDesc,
+                        performSelectAll = ::performSelectAll,
+                        performCopy = ::performCopy,
+                        performPaste = ::performPaste,
+                        performCut = ::performCut,
+                        performUndo = ::performUndo,
+                        readScreenContent = ::readScreenContent,
+                        findAndHighlight = ::findAndHighlight,
+                        pressEnterKey = ::pressEnterKey,
+                        dragFromTo = ::dragFromTo,
+                        performZoom = ::performZoom,
+                    )
+                )
+            }.getOrElse {
+                Log.e(TAG, "Command execution failed: $command", it)
                 false
             }
         }
