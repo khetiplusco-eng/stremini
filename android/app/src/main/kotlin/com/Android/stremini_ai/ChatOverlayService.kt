@@ -46,8 +46,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONArray
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -120,15 +120,12 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private val IDLE_ALPHA = 0.4f
     private val IDLE_ANIM_DURATION = 400L
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val aiBackendClient = AIBackendClient()
     private val deviceCommandRouter = DeviceCommandRouter()
+    private lateinit var chatCommandCoordinator: ChatCommandCoordinator
     private lateinit var bubbleController: BubbleController
     private lateinit var floatingChatController: FloatingChatController
     private lateinit var voiceController: VoiceController
@@ -173,6 +170,12 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         idleAnimationController = IdleAnimationController(
             onIdle = { if (!isMenuExpanded && !isDragging && !isMenuAnimating) shrinkBubble() },
             onWake = { restoreBubble() }
+        )
+        chatCommandCoordinator = ChatCommandCoordinator(
+            scope = serviceScope,
+            backendClient = aiBackendClient,
+            deviceCommandRouter = deviceCommandRouter,
+            onBotMessage = { message -> addMessageToChatbot(message, isUser = false) }
         )
 
         setupOverlay()
@@ -482,66 +485,12 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     }
 
     /**
-     * Smart command processor - routes to device control or AI chat
+     * Smart command processor - routes through chat coordinator
      */
     private fun processUserCommand(userMessage: String) {
-        if (deviceCommandRouter.isDeviceCommand(userMessage)) {
-            val success = deviceCommandRouter.executeDirect(userMessage)
-            if (success) {
-                addMessageToChatbot("✅ Done! Command executed successfully.", isUser = false)
-            } else {
-                sendCommandToAIWithDeviceContext(userMessage)
-            }
-            return
-        }
-
-        sendMessageToAPI(userMessage)
+        chatCommandCoordinator.processUserMessage(userMessage)
     }
 
-    private val DEVICE_COMMAND_KEYWORDS = listOf(
-        "open", "launch", "close", "go to", "navigate to",
-        "tap", "click", "press", "scroll", "swipe",
-        "type", "write", "fill", "search for",
-        "call", "message", "send", "whatsapp",
-        "take screenshot", "screenshot",
-        "volume", "brightness", "mute", "unmute",
-        "go home", "go back", "recent apps",
-        "notifications", "settings",
-        "play", "pause", "stop", "next", "previous",
-        "zoom in", "zoom out",
-        "copy", "paste", "cut", "select all",
-        "find", "read screen"
-    )
-
-    private fun sendCommandToAIWithDeviceContext(command: String) {
-        serviceScope.launch {
-            val screenText = try {
-                ScreenReaderService.getInstance()?.let { service ->
-                    val root = service.rootInActiveWindow
-                    val sb = StringBuilder()
-                    fun traverse(node: android.view.accessibility.AccessibilityNodeInfo) {
-                        val text = node.text?.toString() ?: node.contentDescription?.toString()
-                        if (!text.isNullOrBlank()) sb.appendLine(text.trim())
-                        for (i in 0 until node.childCount) node.getChild(i)?.let { traverse(it) }
-                    }
-                    root?.let { traverse(it) }
-                    sb.toString().take(1000)
-                } ?: ""
-            } catch (e: Exception) { "" }
-
-            aiBackendClient.sendDeviceCommand(command, screenText)
-                .onSuccess { reply -> addMessageToChatbot(reply, isUser = false) }
-                .onFailure { error -> addMessageToChatbot("⚠️ ${error.message}", isUser = false) }
-        }
-    }
-
-    private fun sendMessageToAPI(userMessage: String) {
-        serviceScope.launch {
-            aiBackendClient.sendChatMessage(userMessage)
-                .onSuccess { reply -> addMessageToChatbot(reply, isUser = false) }
-                .onFailure { error -> addMessageToChatbot("⚠️ ${error.message}", isUser = false) }
-        }
-    }
 
     private fun addMessageToChatbot(message: String, isUser: Boolean) {
         floatingChatView?.let { view ->

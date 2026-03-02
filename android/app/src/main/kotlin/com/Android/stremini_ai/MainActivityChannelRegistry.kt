@@ -8,7 +8,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivityChannelRegistry(
-    private val activity: MainActivity,
     private val actions: Actions,
 ) {
     data class Actions(

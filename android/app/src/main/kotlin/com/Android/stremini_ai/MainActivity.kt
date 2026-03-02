@@ -50,7 +50,6 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         MainActivityChannelRegistry(
-            activity = this,
             actions = MainActivityChannelRegistry.Actions(
                 hasOverlayPermission = ::hasOverlayPermission,
                 requestOverlayPermission = ::requestOverlayPermissionSafe,
