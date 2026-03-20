@@ -101,11 +101,9 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private val IDLE_ALPHA = 0.4f
     private val IDLE_ANIM_DURATION = 400L
 
-
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val aiBackendClient = AIBackendClient()
-    private val deviceCommandRouter = DeviceCommandRouter()
     private lateinit var chatCommandCoordinator: ChatCommandCoordinator
     private lateinit var bubbleController: BubbleController
     private lateinit var floatingChatController: FloatingChatController
@@ -149,7 +147,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         chatCommandCoordinator = ChatCommandCoordinator(
             scope = serviceScope,
             backendClient = aiBackendClient,
-            deviceCommandRouter = deviceCommandRouter,
             onBotMessage = { message -> addMessageToChatbot(message, isUser = false) }
         )
 
@@ -180,9 +177,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
 
     private fun hideBubble() {
         if (!isBubbleVisible) return
-        // Collapse menu first if expanded
         if (isMenuExpanded) collapseMenu()
-        // Cancel idle timer
         idleAnimationController.cancel()
         idleRunnable?.let { idleHandler.removeCallbacks(it) }
         overlayView.visibility = View.GONE
@@ -194,7 +189,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private fun showBubble() {
         if (isBubbleVisible) return
         overlayView.visibility = View.VISIBLE
-        // Restore to full state
         bubbleIcon.scaleX = 1f
         bubbleIcon.scaleY = 1f
         bubbleIcon.alpha = 1f
@@ -280,7 +274,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         }
         overlayView.requestLayout()
 
-        // Start idle timer after setup
         resetIdleTimer()
     }
 
@@ -296,7 +289,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         if (isBubbleIdle) return
         isBubbleIdle = true
 
-        // Animate the icon scale and alpha
         bubbleIcon.animate()
             .scaleX(IDLE_SCALE)
             .scaleY(IDLE_SCALE)
@@ -305,22 +297,18 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             .setInterpolator(DecelerateInterpolator())
             .start()
 
-        // Animate the window position to partially hide off the screen edge
         preIdleX = bubbleScreenX
         val screenWidth = resources.displayMetrics.widthPixels
         val bubbleSizePx = dpToPx(bubbleSizeDp).toFloat()
         val collapsedWindowSizePx = bubbleSizePx + dpToPx(10f)
         val windowHalfSize = collapsedWindowSizePx / 2
 
-        // Determine if it's closer to the left or right edge
         val targetX = if (bubbleScreenX > screenWidth / 2) {
-            // Right edge: hide part of the shrunken bubble (adjust 0.4f to control how much is hidden)
             screenWidth - (bubbleSizePx / 2).toInt() + (bubbleSizePx * 0.4f).toInt()
         } else {
-            // Left edge: hide part of the shrunken bubble
             (bubbleSizePx / 2).toInt() - (bubbleSizePx * 0.4f).toInt()
         }
-        
+
         idleAnimator?.cancel()
         idleAnimator = ValueAnimator.ofInt(bubbleScreenX, targetX).apply {
             duration = IDLE_ANIM_DURATION
@@ -341,8 +329,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private fun restoreBubble() {
         if (!isBubbleIdle) return
         isBubbleIdle = false
-        
-        // Restore scale and alpha
+
         bubbleIcon.animate()
             .scaleX(1f)
             .scaleY(1f)
@@ -351,15 +338,13 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             .setInterpolator(DecelerateInterpolator())
             .start()
 
-        // Restore window position
         idleAnimator?.cancel()
-        
+
         val bubbleSizePx = dpToPx(bubbleSizeDp).toFloat()
         val screenWidth = resources.displayMetrics.widthPixels
         val collapsedWindowSizePx = bubbleSizePx + dpToPx(10f)
         val windowHalfSize = collapsedWindowSizePx / 2
 
-        // Calculate normal resting edge
         val targetX = if (preIdleX > screenWidth / 2) {
             screenWidth - (bubbleSizePx / 2).toInt()
         } else {
@@ -463,13 +448,9 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         }
     }
 
-    /**
-     * Smart command processor - routes through chat coordinator
-     */
     private fun processUserCommand(userMessage: String) {
         chatCommandCoordinator.processUserMessage(userMessage)
     }
-
 
     private fun addMessageToChatbot(message: String, isUser: Boolean) {
         floatingChatView?.let { view ->
@@ -515,7 +496,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         val streminiEnabled = enabledMethods.any { it.packageName == packageName }
 
         if (!streminiEnabled) {
-            // Not enabled yet — send to settings to enable it
             try {
                 val intent = Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -528,7 +508,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             return
         }
 
-        // Already enabled — check if it's the active/selected keyboard
         val currentInputMethod = android.provider.Settings.Secure.getString(
             contentResolver,
             android.provider.Settings.Secure.DEFAULT_INPUT_METHOD
@@ -536,7 +515,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         val streminiSelected = currentInputMethod?.contains(packageName) == true
 
         if (streminiSelected) {
-            // It's active — show picker so user can switch away (toggle off)
             try {
                 imeManager.showInputMethodPicker()
                 Toast.makeText(this, "Switch keyboard to deactivate Stremini AI Keyboard", Toast.LENGTH_SHORT).show()
@@ -544,7 +522,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
                 Toast.makeText(this, "Could not open keyboard picker", Toast.LENGTH_SHORT).show()
             }
         } else {
-            // Enabled but not selected — show picker to select it (toggle on)
             try {
                 imeManager.showInputMethodPicker()
                 Toast.makeText(this, "Select 'Stremini AI Keyboard' to activate", Toast.LENGTH_SHORT).show()
@@ -713,7 +690,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         overlayView.postDelayed({
             animateWindowSize(expandedWindowSizePx, collapsedWindowSizePx, 200L) {
                 isMenuAnimating = false
-                resetIdleTimer() // Start idle timer after menu collapses
+                resetIdleTimer()
             }
         }, 120)
     }
@@ -787,7 +764,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     }
 
     private fun buildNotification(): android.app.Notification {
-        // Toggle Bubble action — uses BroadcastReceiver so it works from background
         val toggleIntent = Intent(ACTION_TOGGLE_BUBBLE).apply {
             setClass(this@ChatOverlayService, NotificationActionReceiver::class.java)
         }
@@ -796,7 +772,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Stop Service action
         val stopIntent = Intent(ACTION_STOP_SERVICE).apply {
             setClass(this@ChatOverlayService, NotificationActionReceiver::class.java)
         }
@@ -805,7 +780,6 @@ class ChatOverlayService : Service(), View.OnTouchListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Open app when tapping the notification body
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
