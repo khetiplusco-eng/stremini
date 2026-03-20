@@ -6,6 +6,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -17,10 +18,23 @@ class AIBackendClient(
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    suspend fun sendChatMessage(message: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun sendChatMessage(
+        message: String,
+        history: List<Map<String, String>> = emptyList()
+    ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val requestBody = JSONObject().apply { put("message", message) }
-                .toString().toRequestBody("application/json".toMediaType())
+            val historyArray = JSONArray()
+            history.forEach { turn ->
+                historyArray.put(JSONObject().apply {
+                    put("role", turn["role"] ?: "user")
+                    put("content", turn["content"] ?: "")
+                })
+            }
+            val requestBody = JSONObject().apply {
+                put("message", message)
+                put("history", historyArray)
+            }.toString().toRequestBody("application/json".toMediaType())
+
             val request = Request.Builder()
                 .url("$baseUrl/chat/message")
                 .post(requestBody)
