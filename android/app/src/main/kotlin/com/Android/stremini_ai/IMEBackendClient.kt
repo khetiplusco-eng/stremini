@@ -1,20 +1,18 @@
 package com.Android.stremini_ai
 
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class IMEBackendClient(
     private val baseUrl: String = "https://ai-keyboard-backend.vishwajeetadkine705.workers.dev"
 ) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+    private val client = secureHttpClient(
+        connectTimeoutSeconds = 5,
+        readTimeoutSeconds = 10,
+    )
 
     fun requestKeyboardAction(
         originalText: String,

@@ -1,18 +1,17 @@
 package com.Android.stremini_ai
 
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class ScreenAnalysisClient(
     private val baseUrl: String = "https://ai-keyboard-backend.vishwajeetadkine705.workers.dev"
 ) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = secureHttpClient(
+        connectTimeoutSeconds = 30,
+        readTimeoutSeconds = 30,
+    )
 
     fun analyzeText(content: String): Result<JSONObject> = runCatching {
         val requestBody = JSONObject().apply {

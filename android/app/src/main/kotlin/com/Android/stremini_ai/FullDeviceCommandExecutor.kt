@@ -24,6 +24,8 @@ import kotlinx.coroutines.delay
 object FullDeviceCommandExecutor {
 
     private const val TAG = "FullDeviceCmdExec"
+    private const val PREFS_NAME = "security_prefs"
+    private const val ALLOW_HIGH_RISK_ACTIONS_KEY = "allow_high_risk_actions"
 
     /**
      * Execute a single JSON action object from the backend.
@@ -34,6 +36,10 @@ object FullDeviceCommandExecutor {
         service: ScreenReaderService
     ): Boolean {
         val type = action.optString("action", "").lowercase().trim()
+        if (isHighRiskAction(type) && !isHighRiskActionAllowed(service)) {
+            Log.w(TAG, "Blocked high-risk action without explicit opt-in: $type")
+            return false
+        }
         Log.d(TAG, "Executing action: $type")
 
         return when (type) {
@@ -174,6 +180,22 @@ object FullDeviceCommandExecutor {
                 false
             }
         }
+    }
+
+    private fun isHighRiskAction(type: String): Boolean = type in setOf(
+        "open_app",
+        "launch_app",
+        "type",
+        "input",
+        "clipboard",
+        "screenshot",
+        "media_key",
+        "power_menu",
+    )
+
+    private fun isHighRiskActionAllowed(service: ScreenReaderService): Boolean {
+        val prefs = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(ALLOW_HIGH_RISK_ACTIONS_KEY, false)
     }
 }
 
