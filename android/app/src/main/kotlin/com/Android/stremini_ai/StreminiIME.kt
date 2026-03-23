@@ -31,7 +31,10 @@ class StreminiIME : InputMethodService() {
         private const val TAG = "StreminiIME"
         private const val PREFS_NAME = "keyboard_prefs"
         private const val CLIPBOARD_HISTORY_KEY = "clipboard_history"
+        private const val CLIPBOARD_HISTORY_TS_KEY = "clipboard_history_ts"
+        private const val CLIPBOARD_HISTORY_ENABLED_KEY = "clipboard_history_enabled"
         private const val CLIPBOARD_HISTORY_LIMIT = 12
+        private const val CLIPBOARD_ENTRY_TTL_MS = 30 * 60 * 1000L // 30 min
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -392,6 +395,10 @@ class StreminiIME : InputMethodService() {
     // --- AI Feature Logic ---
 
     private fun handleAiAction(actionType: String) {
+        if (isSensitiveInputField()) {
+            Toast.makeText(this, "AI disabled for sensitive fields", Toast.LENGTH_SHORT).show()
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastAiActionTs < 250L) return
         lastAiActionTs = now
@@ -504,6 +511,10 @@ class StreminiIME : InputMethodService() {
 
     private fun handleClipboardPaste() {
         val ic = currentInputConnection ?: return
+        if (!isClipboardHistoryEnabled()) {
+            Toast.makeText(this, "Clipboard history is disabled", Toast.LENGTH_SHORT).show()
+            return
+        }
         val clip = clipboardManager.primaryClip ?: return
         val text = clip.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
@@ -516,6 +527,10 @@ class StreminiIME : InputMethodService() {
 
     private fun handleClipboardCopy() {
         val ic = currentInputConnection ?: return
+        if (!isClipboardHistoryEnabled()) {
+            Toast.makeText(this, "Clipboard history is disabled", Toast.LENGTH_SHORT).show()
+            return
+        }
         val selected = ic.getSelectedText(0)?.toString().orEmpty()
         val textToCopy = if (selected.isNotBlank()) selected else getCurrentText()
 
@@ -531,6 +546,10 @@ class StreminiIME : InputMethodService() {
     }
 
     private fun showClipboardHistory(anchor: View) {
+        if (!isClipboardHistoryEnabled()) {
+            Toast.makeText(this, "Clipboard history is disabled", Toast.LENGTH_SHORT).show()
+            return
+        }
         val history = getClipboardHistory()
         if (history.isEmpty()) {
             handleClipboardCopy()
@@ -555,6 +574,7 @@ class StreminiIME : InputMethodService() {
     }
 
     private fun saveClipboardEntry(value: String) {
+        if (!isClipboardHistoryEnabled() || isSensitiveInputField()) return
         val sanitized = value.trim()
         if (sanitized.isBlank()) return
 
@@ -566,24 +586,59 @@ class StreminiIME : InputMethodService() {
             }
         }
 
+        val now = System.currentTimeMillis()
+        val timestamps = JSONObject(sharedPrefs.getString(CLIPBOARD_HISTORY_TS_KEY, "{}") ?: "{}")
+        deduped.forEach { item -> timestamps.put(item, now) }
+
         sharedPrefs.edit()
             .putString(CLIPBOARD_HISTORY_KEY, JSONArray(deduped).toString())
+            .putString(CLIPBOARD_HISTORY_TS_KEY, timestamps.toString())
             .apply()
     }
 
     private fun getClipboardHistory(): List<String> {
         val raw = sharedPrefs.getString(CLIPBOARD_HISTORY_KEY, null) ?: return emptyList()
+        val now = System.currentTimeMillis()
+        val timestamps = JSONObject(sharedPrefs.getString(CLIPBOARD_HISTORY_TS_KEY, "{}") ?: "{}")
+        var changed = false
         return try {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
                     val item = arr.optString(i)
-                    if (item.isNotBlank()) add(item)
+                    if (item.isBlank()) continue
+                    val ts = timestamps.optLong(item, 0L)
+                    val isFresh = ts > 0L && (now - ts) <= CLIPBOARD_ENTRY_TTL_MS
+                    if (isFresh) {
+                        add(item)
+                    } else {
+                        timestamps.remove(item)
+                        changed = true
+                    }
+                }
+                if (changed) {
+                    sharedPrefs.edit()
+                        .putString(CLIPBOARD_HISTORY_KEY, JSONArray(this).toString())
+                        .putString(CLIPBOARD_HISTORY_TS_KEY, timestamps.toString())
+                        .apply()
                 }
             }
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    private fun isClipboardHistoryEnabled(): Boolean =
+        sharedPrefs.getBoolean(CLIPBOARD_HISTORY_ENABLED_KEY, false)
+
+    private fun isSensitiveInputField(): Boolean {
+        val info = currentInputEditorInfo ?: return false
+        val inputType = info.inputType
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        return variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+            variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
     }
 
     private fun animateKey(view: View, isPressed: Boolean) {

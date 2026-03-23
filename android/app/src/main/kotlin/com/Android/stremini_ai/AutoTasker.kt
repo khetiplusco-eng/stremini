@@ -58,13 +58,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.TimeUnit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -209,10 +207,10 @@ class AutoTaskerBrain(
     private val onOutput: (String) -> Unit,
 ) {
     private val scope  = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .build()
+    private val client = secureHttpClient(
+        connectTimeoutSeconds = 20,
+        readTimeoutSeconds = 45,
+    )
 
     // History of actions for multi-step context
     private val actionHistory = mutableListOf<JSONObject>()

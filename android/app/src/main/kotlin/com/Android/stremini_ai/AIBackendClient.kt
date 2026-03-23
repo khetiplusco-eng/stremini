@@ -3,20 +3,18 @@ package com.Android.stremini_ai
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class AIBackendClient(
     private val baseUrl: String = "https://ai-keyboard-backend.vishwajeetadkine705.workers.dev"
 ) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = secureHttpClient(
+        connectTimeoutSeconds = 15,
+        readTimeoutSeconds = 30,
+    )
 
     suspend fun sendChatMessage(
         message: String,
