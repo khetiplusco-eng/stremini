@@ -165,13 +165,55 @@ class _StreminiAgentScreenState extends ConsumerState<StreminiAgentScreen>
         final status = response['status']?.toString() ?? 'ERROR';
 
         if (status == 'CONTINUE') {
-          final nextFile = response['nextFile']?.toString() ?? 'unknown';
-          final fileContent = response['fileContent']?.toString() ?? '';
+          final action = response['action']?.toString() ?? 'read_file';
           iteration = response['iteration'] is int
               ? response['iteration'] as int
               : iteration + 1;
 
-          _addLog(LogType.fileRead, 'Reading: $nextFile');
+          if (action == 'more_files') {
+            // AI saved a file and signalled more_files — continue prompting for next file
+            final savedFile = response['savedFile']?.toString() ?? 'unknown';
+            final nextPrompt = response['nextPrompt']?.toString() ??
+                '✅ File saved: $savedFile\nNow output the next file that needs to be fixed or created.';
+
+            _addLog(LogType.success, 'Saved: $savedFile');
+
+            history.addAll([
+              {
+                'role': 'assistant',
+                'content': response['savedContent'] != null
+                    ? '<fix path="$savedFile">${response['savedContent']}</fix>\n<more_files />'
+                    : '<fix path="$savedFile">...</fix>\n<more_files />',
+              },
+              {'role': 'user', 'content': nextPrompt},
+            ]);
+          } else if (action == 'already_read') {
+            final path = response['nextFile']?.toString() ?? 'unknown';
+            _addLog(LogType.info, 'Already read: $path (skipping)');
+            // Don't add to history — worker already handled it
+          } else {
+            // Standard read_file
+            final nextFile = response['nextFile']?.toString() ?? 'unknown';
+            final fileContent = response['fileContent']?.toString() ?? '';
+
+            _addLog(LogType.fileRead, 'Reading: $nextFile');
+
+            history.addAll([
+              {'role': 'assistant', 'content': '<read_file path="$nextFile" />'},
+              {
+                'role': 'user',
+                'content': 'File content of $nextFile:\n\n$fileContent'
+              },
+            ]);
+
+            if (response['readFiles'] is List) {
+              visitedFiles
+                ..clear()
+                ..addAll(List<String>.from(response['readFiles'] as List));
+            } else if (!visitedFiles.contains(nextFile)) {
+              visitedFiles.add(nextFile);
+            }
+          }
 
           if (!mounted) break;
           setState(() {
@@ -180,22 +222,6 @@ class _StreminiAgentScreenState extends ConsumerState<StreminiAgentScreen>
               filesRead: visitedFiles.length,
             );
           });
-
-          history.addAll([
-            {'role': 'assistant', 'content': '<read_file path="$nextFile" />'},
-            {
-              'role': 'user',
-              'content': 'File content of $nextFile:\n\n$fileContent'
-            },
-          ]);
-
-          if (response['readFiles'] is List) {
-            visitedFiles
-              ..clear()
-              ..addAll(List<String>.from(response['readFiles'] as List));
-          } else if (!visitedFiles.contains(nextFile)) {
-            visitedFiles.add(nextFile);
-          }
 
           continue;
         }
@@ -207,11 +233,31 @@ class _StreminiAgentScreenState extends ConsumerState<StreminiAgentScreen>
         if (status == 'COMPLETED' || status == 'FIXED') {
           _addLog(
               LogType.success, 'Agent completed in ${duration.inSeconds}s');
-          _addLog(LogType.code, summary);
+
+          // Show each output file separately in the terminal log
+          final outputFilesList = response['outputFiles'];
+          if (outputFilesList is List && outputFilesList.isNotEmpty) {
+            for (final f in outputFilesList) {
+              if (f is Map) {
+                final path = f['path']?.toString() ?? '';
+                final content = f['content']?.toString() ?? '';
+                _addLog(LogType.fileRead, '📄 $path');
+                if (content.isNotEmpty) _addLog(LogType.code, content);
+              }
+            }
+          } else {
+            _addLog(LogType.code, summary);
+          }
         } else {
           _addLog(LogType.error,
               response['message']?.toString() ?? 'Unknown error');
         }
+
+        final outputFilesList = response['outputFiles'];
+        final allOutputFiles = outputFilesList is List
+            ? List<Map<String, dynamic>>.from(outputFilesList
+                .map((e) => Map<String, dynamic>.from(e as Map)))
+            : <Map<String, dynamic>>[];
 
         final result = GithubAgentRunResult(
           status: status,
@@ -221,6 +267,7 @@ class _StreminiAgentScreenState extends ConsumerState<StreminiAgentScreen>
           iterationCount: iteration,
           duration: duration,
           filePath: response['filePath']?.toString(),
+          outputFiles: allOutputFiles,
         );
 
         if (!mounted) break;
@@ -956,7 +1003,33 @@ class _StreminiAgentScreenState extends ConsumerState<StreminiAgentScreen>
           ],
 
           // Code output
-          if (result.summary.isNotEmpty && isSuccess) ...[
+          if (isSuccess && result.outputFiles.isNotEmpty) ...[
+            _buildSectionHeader(
+                'Generated / Fixed Files (${result.outputFiles.length})'),
+            const SizedBox(height: 10),
+            ...result.outputFiles.map((f) {
+              final path = f['path']?.toString() ?? 'unknown';
+              final content = f['content']?.toString() ?? '';
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      path,
+                      style: const TextStyle(
+                        color: Color(0xFF79C0FF),
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  _buildCodeOutput(content),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }).toList(),
+          ] else if (result.summary.isNotEmpty && isSuccess) ...[
             _buildSectionHeader('Generated Code'),
             const SizedBox(height: 10),
             _buildCodeOutput(result.summary),
