@@ -7,7 +7,7 @@
     android:elevation="12dp"
     android:clipToOutline="true">
 
-    <!-- Header - More rounded top -->
+    <!-- Header - draggable area -->
     <LinearLayout
         android:id="@+id/chat_header"
         android:layout_width="match_parent"
@@ -17,16 +17,23 @@
         android:padding="12dp"
         android:gravity="center_vertical">
 
-        <!-- AI Icon (Smaller) -->
-        <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:src="@drawable/new_logo"
-            android:padding="4dp"
-            android:background="@drawable/circle_bg_rounded"
-            android:scaleType="fitCenter"/>
+        <!-- AI Logo — round clip using a circular container -->
+        <FrameLayout
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/circle_bg_blue"
+            android:clipToOutline="true">
 
-        <!-- Title (Smaller) -->
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/new_logo"
+                android:scaleType="centerCrop"
+                android:padding="4dp"
+                android:contentDescription="Stremini Logo"/>
+        </FrameLayout>
+
+        <!-- Title -->
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -37,7 +44,7 @@
             android:textStyle="bold"
             android:layout_marginStart="10dp"/>
 
-        <!-- Close Button (Smaller) -->
+        <!-- Close Button -->
         <ImageView
             android:id="@+id/btn_close_chat"
             android:layout_width="28dp"
@@ -50,7 +57,7 @@
             android:scaleType="fitCenter"/>
     </LinearLayout>
 
-    <!-- Messages Container - Better rounded feel -->
+    <!-- Messages Container -->
     <ScrollView
         android:id="@+id/scroll_messages"
         android:layout_width="match_parent"
@@ -70,7 +77,46 @@
             android:gravity="bottom"/>
     </ScrollView>
 
-    <!-- Input Container - Rounded bottom -->
+    <!-- Voice status bar (shown while recording) -->
+    <LinearLayout
+        android:id="@+id/voice_status_bar"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:background="#111111"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/voice_dot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/circle_bg_blue"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
+            android:id="@+id/tv_voice_partial"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Listening…"
+            android:textColor="#93C5FD"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium"/>
+
+        <TextView
+            android:id="@+id/btn_cancel_voice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕"
+            android:textColor="#64748B"
+            android:textSize="14sp"
+            android:padding="4dp"/>
+    </LinearLayout>
+
+    <!-- Input Container -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -79,7 +125,7 @@
         android:padding="10dp"
         android:gravity="center_vertical">
 
-        <!-- Voice Input Button (Smaller) -->
+        <!-- Voice Input Button -->
         <ImageView
             android:id="@+id/btn_voice_input"
             android:layout_width="36dp"
@@ -92,7 +138,7 @@
             android:layout_marginEnd="8dp"
             android:scaleType="fitCenter"/>
 
-        <!-- Text Input (Better rounded) -->
+        <!-- Text Input -->
         <EditText
             android:id="@+id/et_chat_input"
             android:layout_width="0dp"
@@ -107,7 +153,7 @@
             android:maxLines="3"
             android:inputType="textMultiLine|textCapSentences"/>
 
-        <!-- Send Button (Better quality) -->
+        <!-- Send Button -->
         <ImageView
             android:id="@+id/btn_send_message"
             android:layout_width="36dp"
