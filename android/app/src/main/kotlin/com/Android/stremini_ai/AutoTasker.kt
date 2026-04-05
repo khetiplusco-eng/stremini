@@ -15,6 +15,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
+import android.text.TextUtils
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Path
@@ -1344,10 +1346,23 @@ class AutoTaskerService : Service() {
             setStopEnabled(false)
         }
 
+        initializeBrainIfPossible()
+
+        buildVoiceEngine()
+        startListening()
+    }
+
+    private fun initializeBrainIfPossible(): Boolean {
         val service = ScreenReaderService.getInstance()
         if (service == null) {
-            overlay?.setStatus("⚠ Enable Accessibility first")
-            return
+            overlay?.setStatus(
+                if (isAccessibilityServiceEnabled()) {
+                    "⏳ Accessibility is enabled. Connecting service..."
+                } else {
+                    "⚠ Enable Accessibility first"
+                }
+            )
+            return false
         }
 
         brain = AutoTaskerBrain(
@@ -1359,15 +1374,43 @@ class AutoTaskerService : Service() {
                 if (stepMatch != null) {
                     overlay?.setStepBadge("${stepMatch.groupValues[1]}/${stepMatch.groupValues[2]}")
                 } else if (msg.startsWith("✅") || msg.startsWith("❌") ||
-                           msg.startsWith("⏹") || msg.startsWith("⚠")) {
+                    msg.startsWith("⏹") || msg.startsWith("⚠")
+                ) {
                     overlay?.setStepBadge("")
                 }
             },
             onOutput = { text -> overlay?.setOutput(text) }
         )
+        return true
+    }
 
-        buildVoiceEngine()
-        startListening()
+    private suspend fun awaitConnectedAccessibilityService(timeoutMs: Long = 5000): Boolean {
+        if (brain != null) return true
+        if (!isAccessibilityServiceEnabled()) return false
+
+        val startedAt = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startedAt < timeoutMs) {
+            if (initializeBrainIfPossible()) return true
+            delay(200)
+        }
+        return false
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val serviceName = "$packageName/${ScreenReaderService::class.java.canonicalName}"
+        val settingValue = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(settingValue)
+        while (splitter.hasNext()) {
+            if (splitter.next().equals(serviceName, ignoreCase = true)) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun buildVoiceEngine() {
@@ -1442,6 +1485,14 @@ class AutoTaskerService : Service() {
 
         serviceScope.launch {
             try {
+                val ready = awaitConnectedAccessibilityService()
+                if (!ready) {
+                    isExecuting = false
+                    overlay?.setStopEnabled(false)
+                    overlay?.setStepBadge("")
+                    overlay?.setStatus("⚠ Enable Accessibility first")
+                    return@launch
+                }
                 brain?.execute(command)
                 isExecuting = false
                 overlay?.setStopEnabled(false)

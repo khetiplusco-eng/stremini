@@ -73,6 +73,7 @@ class ScreenReaderService : AccessibilityService() {
     private var tagsContainer: FrameLayout? = null
     private var isScanning = false
     private var tagsVisible = false
+    private var tagsAutoHideJob: Job? = null
     private var automationStatusView: TextView? = null
     private var automationHighlightView: View? = null
     private var lastAccessibilityEventTime: Long = 0L
@@ -1276,6 +1277,12 @@ class ScreenReaderService : AccessibilityService() {
                 createFloatingTag(it.bounds, "Verified Safe", SAFE_BG_COLOR, SAFE_BORDER_COLOR, SAFE_TEXT_COLOR, "Source Verified")
             }
         }
+
+        tagsAutoHideJob?.cancel()
+        tagsAutoHideJob = serviceScope.launch {
+            delay(4000)
+            clearTags()
+        }
     }
 
     private fun createBanner(title: String, bgColor: Int, borderColor: Int, textColor: Int) {
@@ -1387,6 +1394,8 @@ class ScreenReaderService : AccessibilityService() {
     }
 
     private fun clearTags() {
+        tagsAutoHideJob?.cancel()
+        tagsAutoHideJob = null
         tagsContainer?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
         tagsContainer = null; tagsVisible = false
     }
