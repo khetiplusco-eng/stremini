@@ -657,6 +657,7 @@ class AutoTaskerOverlay(private val context: Context) {
     var onMicTapped: (() -> Unit)? = null
     var onStopTapped: (() -> Unit)? = null
     var onTextCommand: ((String) -> Unit)? = null
+    var onTextModeChanged: ((Boolean) -> Unit)? = null
 
     // ── Colors ─────────────────────────────────────────────────────────────
     private val cBg          = pc("#F2050812")
@@ -1109,6 +1110,7 @@ class AutoTaskerOverlay(private val context: Context) {
     private fun switchToVoiceMode() {
         if (!isTextMode) return
         isTextMode = false
+        onTextModeChanged?.invoke(false)
         mainHandler.removeCallbacks(focusInputRunnable)
         // Hide keyboard FIRST, then restore NOT_FOCUSABLE flag
         hideKeyboard()
@@ -1121,6 +1123,7 @@ class AutoTaskerOverlay(private val context: Context) {
     private fun switchToTextMode() {
         if (isTextMode) return
         isTextMode = true
+        onTextModeChanged?.invoke(true)
         mainHandler.removeCallbacks(makeWindowNotFocusableRunnable)
         applyTabState()
         applyOverlayAnchorForMode()
@@ -1342,6 +1345,17 @@ class AutoTaskerService : Service() {
             show()
             onCloseTapped  = { stopSelf() }
             onMicTapped    = { toggleMic() }
+            onTextModeChanged = { isTextMode ->
+                if (isTextMode) {
+                    voice?.stop()
+                    overlay?.setMicState(false)
+                    if (!isExecuting) {
+                        overlay?.setStatus("⌨ Text mode — type your command")
+                    }
+                } else if (!isExecuting) {
+                    startListening()
+                }
+            }
             onStopTapped   = {
                 brain?.cancel()
                 isExecuting = false
