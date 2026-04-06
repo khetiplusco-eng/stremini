@@ -634,6 +634,8 @@ class AutoTaskerOverlay(private val context: Context) {
 
     private val waveAnimators = mutableListOf<ValueAnimator>()
     private var isTextMode = false
+    private var isDispatchingTextCommand = false
+    private var lastTextCommandAtMs = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
     private var baseBottomOffsetPx = 0
     private var textModeTopOffsetPx = 0
@@ -1151,11 +1153,21 @@ class AutoTaskerOverlay(private val context: Context) {
     private fun submitTextCommand() {
         val cmd = etTextInput?.text?.toString()?.trim().orEmpty()
         if (cmd.isBlank()) return
+        val now = System.currentTimeMillis()
+        if (isDispatchingTextCommand || (now - lastTextCommandAtMs) < 700L) {
+            return
+        }
+        isDispatchingTextCommand = true
+        lastTextCommandAtMs = now
         try {
+            hideKeyboard()
+            switchToVoiceMode()
             onTextCommand?.invoke(cmd)
             etTextInput?.setText("")
         } catch (t: Throwable) {
             Log.e(TAG, "Text command dispatch failed", t)
+        } finally {
+            mainHandler.postDelayed({ isDispatchingTextCommand = false }, 350L)
         }
     }
 
@@ -1461,6 +1473,10 @@ class AutoTaskerService : Service() {
 
     private fun handleCommand(command: String) {
         if (command.isBlank()) { voice?.resume(); return }
+        if (isExecuting) {
+            overlay?.setStatus("⚠ Already executing a command")
+            return
+        }
 
         val lower = command.lowercase().trim()
         if (lower == "stop" || lower == "cancel" || lower == "stop tasker") {
