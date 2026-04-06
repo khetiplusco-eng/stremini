@@ -192,8 +192,8 @@ class AutoTaskerBrain(
     fun cancel() { scope.coroutineContext.cancelChildren() }
     fun destroy() { scope.cancel() }
 
-    fun execute(command: String) {
-        scope.launch {
+    fun execute(command: String): Job {
+        return scope.launch {
             actionHistory.clear()
             onOutput("🎙 \"$command\"\n\n⚡ Processing...")
             onStatus("⚡ Thinking...")
@@ -1161,7 +1161,6 @@ class AutoTaskerOverlay(private val context: Context) {
         lastTextCommandAtMs = now
         try {
             hideKeyboard()
-            switchToVoiceMode()
             onTextCommand?.invoke(cmd)
             etTextInput?.setText("")
         } catch (t: Throwable) {
@@ -1509,7 +1508,8 @@ class AutoTaskerService : Service() {
                     overlay?.setStatus("⚠ Enable Accessibility first")
                     return@launch
                 }
-                brain?.execute(command)
+                val runJob = brain?.execute(command)
+                runJob?.join()
                 isExecuting = false
                 overlay?.setStopEnabled(false)
                 overlay?.setStepBadge("")
