@@ -226,7 +226,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
       ref.read(chatNotifierProvider.notifier)
           .loadDocument(DocumentContext(fileName: '📷 $name (OCR)', text: text));
-      _snack('🔍 OCR complete — ${(text.length / 1000).toStringAsFixed(1)}k chars extracted');
+      _snack('Image added successfully');
     } catch (e) {
       if (mounted) _snack('OCR failed: $e', err: true);
     } finally {
@@ -268,9 +268,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
       ref.read(chatNotifierProvider.notifier)
           .loadDocument(DocumentContext(fileName: name, text: text));
-      _snack(
-        '📄 "$name" — ${(text.length / 1000).toStringAsFixed(1)}k chars loaded',
-      );
+      _snack('📄 "$name" added');
     } catch (e) {
       if (mounted) _snack('Error reading file: $e', err: true);
     } finally {
@@ -466,9 +464,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                     color: _textPri, fontSize: 12, fontWeight: FontWeight.w700),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(
-              isOcr
-                  ? 'Text extracted from image via OCR'
-                  : 'Ask anything about this document',
+              'Ask anything about this document',
               style: const TextStyle(color: _textMuted, fontSize: 11),
             ),
           ]),
@@ -843,10 +839,9 @@ class _AttachSheet extends StatelessWidget {
           _tile(context, Icons.description_outlined, _accent,
               'Document / Text',
               'TXT, MD, CSV, JSON, DOCX', 'text'),
-          // FIX: Image tile now says "OCR" — no vision payload sent to backend.
           _tile(context, Icons.image_search_outlined, const Color(0xFF8B5CF6),
-              'Image (OCR)',
-              'Text is extracted from the image on-device', 'image'),
+              'Image',
+              'Use image as chat context', 'image'),
           _tile(context, Icons.attach_file_rounded,
               const Color(0xFFF59E0B), 'Other File', 'Any file type',
               'file'),
