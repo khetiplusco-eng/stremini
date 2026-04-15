@@ -14,6 +14,8 @@ import '../contact_us_screen.dart';
 import '../smart_scheduler_screen.dart';
 import '../../providers/auth_provider.dart';
 
+const _logoPath = 'lib/img/logo.jpg';
+
 final keyboardServiceProvider =
     Provider<KeyboardService>((ref) => KeyboardService());
 final keyboardStatusProvider = FutureProvider<KeyboardStatus>((ref) async {
@@ -183,13 +185,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ),
           const SizedBox(width: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              _logoPath,
+              width: 26,
+              height: 26,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.auto_awesome, color: Color(0xFF23A6E2), size: 20),
+            ),
+          ),
+          const SizedBox(width: 10),
           const Text(
             'STREMINI AI',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w800,
-              letterSpacing: 2.0,
+              letterSpacing: 1.8,
             ),
           ),
           const Spacer(),
@@ -255,18 +269,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ),
           const SizedBox(width: 8),
-          _agentBtn('Pause', const Color(0xFF1A1A1A), const Color(0xFF8B95A6), () async {
-            await controller.toggleBubble(false);
-          }),
+          _agentBtn(
+            'Pause',
+            const Color(0xFF1A1A1A),
+            isActive ? const Color(0xFF8B95A6) : const Color(0xFF4A5568),
+            isActive
+                ? () async {
+                    await controller.toggleBubble(false);
+                  }
+                : null,
+          ),
           const SizedBox(width: 8),
           _agentBtn(
-            isActive ? 'Settings' : 'Start',
+            isActive ? 'Running' : 'Start',
             const Color(0xFF1A1A1A),
             Colors.white,
             () async {
-              if (!isActive) {
-                await controller.toggleBubble(true);
-              }
+              if (isActive) return;
+              await controller.toggleBubble(true);
             },
           ),
         ],
@@ -274,7 +294,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _agentBtn(String label, Color bg, Color textColor, VoidCallback onTap) {
+  Widget _agentBtn(String label, Color bg, Color textColor, VoidCallback? onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -514,9 +534,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF131313), Color(0xFF10131A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF1C1C1C)),
+          border: Border.all(color: const Color(0xFF1F2430)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 16,
+              offset: Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -29,13 +29,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTE ON flutter_local_notifications:
@@ -59,6 +61,7 @@ const _amber     = Color(0xFFE08A23);
 const _txt       = Colors.white;
 const _txtMuted  = Color(0xFF6B7280);
 const _txtDim    = Color(0xFF4A5568);
+const _logoPath  = 'lib/img/logo.jpg';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
@@ -198,82 +201,75 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._();
 
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
   Future<void> init() async {
     if (_initialized) return;
+    tz.initializeTimeZones();
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    await _plugin.initialize(
+      const InitializationSettings(android: androidSettings, iOS: iosSettings),
+    );
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestExactAlarmsPermission();
     _initialized = true;
-    // ── REAL IMPLEMENTATION (uncomment after adding packages) ──────────────
-    // import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-    // import 'package:timezone/timezone.dart' as tz;
-    // import 'package:timezone/data/latest.dart' as tzData;
-    //
-    // final plugin = FlutterLocalNotificationsPlugin();
-    // tzData.initializeTimeZones();
-    //
-    // const androidSettings =
-    //     AndroidInitializationSettings('@mipmap/ic_launcher');
-    // const iosSettings = DarwinInitializationSettings(
-    //   requestAlertPermission: true,
-    //   requestBadgePermission: true,
-    //   requestSoundPermission: true,
-    // );
-    // await plugin.initialize(
-    //   const InitializationSettings(android: androidSettings, iOS: iosSettings),
-    // );
-    // ─────────────────────────────────────────────────────────────────────────
-    debugPrint('[NotificationService] initialized (stub mode)');
   }
 
   /// Schedule a notification for [task] at [task.scheduledTime].
   /// Uses a deterministic int id derived from the task id so we can cancel it.
   Future<void> scheduleTask(ScheduledTask task) async {
-    // ── REAL IMPLEMENTATION ────────────────────────────────────────────────
-    // import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-    // import 'package:timezone/timezone.dart' as tz;
-    //
-    // final plugin    = FlutterLocalNotificationsPlugin();
-    // final notifId   = task.id.hashCode.abs() % 100000;
-    // final scheduledTz = tz.TZDateTime.from(task.scheduledTime, tz.local);
-    //
-    // if (scheduledTz.isBefore(tz.TZDateTime.now(tz.local))) return;
-    //
-    // await plugin.zonedSchedule(
-    //   notifId,
-    //   '⏰ ${task.emoji} ${task.title}',
-    //   task.description.isNotEmpty
-    //       ? task.description
-    //       : 'Scheduled task — tap to view',
-    //   scheduledTz,
-    //   const NotificationDetails(
-    //     android: AndroidNotificationDetails(
-    //       'stremini_tasks',
-    //       'Smart Scheduler',
-    //       channelDescription: 'Stremini task reminders',
-    //       importance: Importance.high,
-    //       priority: Priority.high,
-    //       icon: '@mipmap/ic_launcher',
-    //     ),
-    //     iOS: DarwinNotificationDetails(
-    //       presentAlert: true,
-    //       presentBadge: true,
-    //       presentSound: true,
-    //     ),
-    //   ),
-    //   androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    //   uiLocalNotificationDateInterpretation:
-    //       UILocalNotificationDateInterpretation.absoluteTime,
-    //   matchDateTimeComponents: DateTimeComponents.time,
-    // );
-    // ─────────────────────────────────────────────────────────────────────────
-    debugPrint('[NotificationService] scheduled "${task.title}" for ${task.scheduledTime}');
+    if (!_initialized) {
+      await init();
+    }
+    final notifId = task.id.hashCode.abs() % 100000;
+    final scheduledTz = tz.TZDateTime.from(task.scheduledTime, tz.local);
+    if (scheduledTz.isBefore(tz.TZDateTime.now(tz.local))) {
+      return;
+    }
+    await _plugin.zonedSchedule(
+      notifId,
+      '⏰ ${task.emoji} ${task.title}',
+      task.description.isNotEmpty
+          ? task.description
+          : 'Scheduled task reminder',
+      scheduledTz,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'stremini_tasks',
+          'Smart Scheduler',
+          channelDescription: 'Stremini task reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
   }
 
   Future<void> cancelTask(ScheduledTask task) async {
-    // final plugin  = FlutterLocalNotificationsPlugin();
-    // final notifId = task.id.hashCode.abs() % 100000;
-    // await plugin.cancel(notifId);
-    debugPrint('[NotificationService] cancelled "${task.title}"');
+    final notifId = task.id.hashCode.abs() % 100000;
+    await _plugin.cancel(notifId);
   }
 }
 
@@ -439,7 +435,17 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
 
   Future<void> _loadPersistedTasks() async {
     final saved = await TaskStorage.load();
-    if (mounted) setState(() { _tasks = saved; _tasksLoaded = true; });
+    for (final task in saved.where((t) =>
+        t.status != TaskStatus.completed &&
+        t.scheduledTime.isAfter(DateTime.now()))) {
+      await _notifService.scheduleTask(task);
+    }
+    if (mounted) {
+      setState(() {
+        _tasks = saved;
+        _tasksLoaded = true;
+      });
+    }
   }
 
   Future<void> _persistTasks() => TaskStorage.save(_tasks);
@@ -637,17 +643,22 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       color: _bg,
       child: Row(children: [
-        GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: _border),
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: _border),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              _logoPath,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.grid_view_rounded, color: _txtMuted, size: 14),
             ),
-            child: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: _txtMuted, size: 13),
           ),
         ),
         const SizedBox(width: 14),
@@ -678,7 +689,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
           const Text('Smart Schedule',
               style: TextStyle(
                   color: _txt,
-                  fontSize: 28,
+                  fontSize: 20,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.5,
                   height: 1.1)),
@@ -770,7 +781,6 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
     final chips = [
       (Icons.phone_outlined,    'Schedule Call',   'Schedule a call for tomorrow morning'),
       (Icons.calendar_today_outlined, 'Set Meeting', 'Set up a team meeting this week'),
-      (Icons.settings_suggest_outlined, 'Automate Task', 'Create an automation task for tonight'),
     ];
     return SizedBox(
       height: 38,
@@ -884,10 +894,6 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
       );
 
   Widget _buildTaskRow(ScheduledTask task) {
-    final isAutomation = task.category == TaskCategory.other ||
-        task.title.toLowerCase().contains('generat') ||
-        task.title.toLowerCase().contains('automat');
-
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(18, 10, 14, 10),
@@ -925,23 +931,6 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-              // Automation badge OR type icon
-              if (isAutomation)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 4),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _accent.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: const Text('AUTOMATION',
-                      style: TextStyle(
-                          color: _accent,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0)),
-                ),
               Text(task.title,
                   style: const TextStyle(
                       color: _txt,
@@ -956,12 +945,6 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (isAutomation)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3),
-                  child: const Text('Automated by Stremini',
-                      style: TextStyle(color: _txtDim, fontSize: 10)),
-                ),
             ]),
           ),
           const SizedBox(width: 8),
@@ -975,9 +958,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
                 border: Border.all(color: _border),
               ),
               child: Icon(
-                isAutomation
-                    ? Icons.bolt_rounded
-                    : Icons.videocam_outlined,
+                Icons.videocam_outlined,
                 color: _txtMuted, size: 13,
               ),
             ),
@@ -1025,7 +1006,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
             Text('$pct',
                 style: const TextStyle(
                     color: _txt,
-                    fontSize: 48,
+                    fontSize: 38,
                     fontWeight: FontWeight.w800,
                     height: 1.0)),
             const Text('%',
