@@ -1,19 +1,9 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// chat_screen.dart  —  FIX: Images OCR'd on-device; text sent to backend.
-//                       No base64 vision payloads — K2 has no vision capability.
-//
-// CHANGES FROM PREVIOUS VERSION:
-//   • Images  → OCR'd via google_mlkit_text_recognition, extracted text is
-//               loaded as a DocumentContext and sent to /document endpoint.
-//               The old _processAttachment / base64 image path is removed.
-//   • 'file'  attach type also routes through OCR if the picked file is an image.
-//   • _selectedFile / _base64File / _mimeType state vars removed (no longer needed).
-//   • _filePreview widget removed (images are now doc contexts, not attachments).
-//   • _AttachSheet subtitle updated to clarify OCR behaviour.
-//
-// PUBSPEC DEPENDENCY TO ADD:
-//   google_mlkit_text_recognition: ^0.13.0
-// ─────────────────────────────────────────────────────────────────────────────
+// chat_screen.dart — IMPROVED: math rendering + markdown cleanup
+// Changes vs previous:
+//   • _stripMarkdown now properly removes all *, _, #, and ` artifacts
+//   • Math expressions (LaTeX \frac, \sum, etc.) rendered as human-readable text
+//   • No more stray backslashes, hashtags, or asterisks in bot output
+//   • Added _renderContent() which handles inline code blocks nicely
 
 import 'dart:convert';
 import 'dart:io';
@@ -25,7 +15,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:mime/mime.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:syncfusion_flutter_pdf/syncfusion_flutter_pdf.dart';
 
 import '../core/widgets/app_drawer.dart';
 import '../providers/chat_provider.dart';
@@ -34,34 +24,28 @@ import 'contact_us_screen.dart';
 import 'home/home_screen.dart';
 import 'settings_screen.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Design tokens (exact match to home_screen.dart)
-// ─────────────────────────────────────────────────────────────────────────────
 const _bg        = Colors.black;
-const _surface   = Color(0xFF111111);
+const _surface   = Color(0xFF0F0F0F);
 const _surfaceHi = Color(0xFF1A1A1A);
 const _border    = Color(0xFF1C1C1C);
-const _borderHi  = Color(0xFF2A2A2A);
 const _accent    = Color(0xFF23A6E2);
 const _accentDim = Color(0xFF0A1A28);
 const _textPri   = Colors.white;
 const _textMuted = Color(0xFF6B7280);
 const _textDim   = Color(0xFF4A5568);
 const _userBubble= Color(0xFF0C1C2B);
-const _botBubble = Color(0xFF111111);
+const _botBubble = Color(0xFF0F0F0F);
 const _danger    = Color(0xFFEF4444);
 const _success   = Color(0xFF34C47C);
 const _logoPath  = 'lib/img/logo.jpg';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Text-extraction helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Text extraction helpers (unchanged) ──────────────────────────────────────
 
 Future<String> _extractPdfText(List<int> bytes) async {
   try {
-    final doc       = PdfDocument(inputBytes: Uint8List.fromList(bytes));
+    final doc = PdfDocument(inputBytes: Uint8List.fromList(bytes));
     final extractor = PdfTextExtractor(doc);
-    final buf       = StringBuffer();
+    final buf = StringBuffer();
     for (int i = 0; i < doc.pages.count; i++) {
       final t = extractor.extractText(startPageIndex: i, endPageIndex: i);
       if (t.trim().isNotEmpty) { buf.writeln(t.trim()); buf.writeln(); }
@@ -82,17 +66,13 @@ Future<String> _readTextFile(File file) async {
   }
 }
 
-/// Minimal DOCX text extraction — reads word/document.xml from the ZIP
-/// without any native dependency (docx is just a ZIP).
 Future<String> _extractDocxText(List<int> bytes) async {
   try {
-    final raw   = utf8.decode(bytes, allowMalformed: true);
+    final raw = utf8.decode(bytes, allowMalformed: true);
     final regex = RegExp(r'<w:t[^>]*>([^<]*)<\/w:t>', dotAll: true);
     final matches = regex.allMatches(raw);
     if (matches.isEmpty) {
-      return raw.replaceAll(RegExp(r'<[^>]+>'), ' ')
-                .replaceAll(RegExp(r'\s+'), ' ')
-                .trim();
+      return raw.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     }
     return matches.map((m) => m.group(1) ?? '').join(' ').trim();
   } catch (e) {
@@ -101,8 +81,6 @@ Future<String> _extractDocxText(List<int> bytes) async {
   }
 }
 
-/// On-device OCR via MLKit — extracts plain text from any image file.
-/// Returns empty string on failure so the caller can show an error snack.
 Future<String> _extractOcrText(File imageFile) async {
   final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
   try {
@@ -117,16 +95,88 @@ Future<String> _extractOcrText(File imageFile) async {
   }
 }
 
-/// Strip markdown bold/italic that the backend sometimes sends despite the
-/// system prompt telling it not to — mirrors chat.js cleanOutput().
-String _stripMarkdown(String text) {
+// ── IMPROVED: Comprehensive markdown & artifact cleanup ───────────────────────
+
+/// Converts LaTeX-style math to human-readable approximations
+String _convertMath(String text) {
   return text
-      .replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1')
-      .replaceAll(RegExp(r'\*([^*]+)\*'), r'$1')
-      .replaceAll(RegExp(r'__([^_]+)__'), r'$1')
-      .replaceAll(RegExp(r'_([^_]+)_'), r'$1')
-      .replaceAll(RegExp(r'\*+'), '')
-      .trim();
+    // fractions: \frac{a}{b} → a/b
+    .replaceAllMapped(RegExp(r'\\frac\{([^}]+)\}\{([^}]+)\}'), (m) => '(${m[1]})/(${m[2]})')
+    // sqrt: \sqrt{x} → √x
+    .replaceAllMapped(RegExp(r'\\sqrt\{([^}]+)\}'), (m) => '√(${m[1]})')
+    // subscripts/superscripts: x_{n} or x^{n}
+    .replaceAllMapped(RegExp(r'([a-zA-Z])\^\{([^}]+)\}'), (m) => '${m[1]}^${m[2]}')
+    .replaceAllMapped(RegExp(r'([a-zA-Z])_\{([^}]+)\}'), (m) => '${m[1]}_${m[2]}')
+    .replaceAllMapped(RegExp(r'([a-zA-Z])\^(\w)'), (m) => '${m[1]}^${m[2]}')
+    .replaceAllMapped(RegExp(r'([a-zA-Z])_(\w)'), (m) => '${m[1]}_${m[2]}')
+    // common symbols
+    .replaceAll(r'\times', '×')
+    .replaceAll(r'\div', '÷')
+    .replaceAll(r'\pm', '±')
+    .replaceAll(r'\infty', '∞')
+    .replaceAll(r'\pi', 'π')
+    .replaceAll(r'\alpha', 'α')
+    .replaceAll(r'\beta', 'β')
+    .replaceAll(r'\gamma', 'γ')
+    .replaceAll(r'\delta', 'δ')
+    .replaceAll(r'\theta', 'θ')
+    .replaceAll(r'\sigma', 'σ')
+    .replaceAll(r'\mu', 'μ')
+    .replaceAll(r'\lambda', 'λ')
+    .replaceAll(r'\sum', '∑')
+    .replaceAll(r'\int', '∫')
+    .replaceAll(r'\approx', '≈')
+    .replaceAll(r'\neq', '≠')
+    .replaceAll(r'\leq', '≤')
+    .replaceAll(r'\geq', '≥')
+    .replaceAll(r'\cdot', '·')
+    .replaceAll(r'\ldots', '…')
+    .replaceAll(r'\rightarrow', '→')
+    .replaceAll(r'\leftarrow', '←')
+    // remove remaining backslash-commands like \text{} \mathbb{} etc.
+    .replaceAllMapped(RegExp(r'\\[a-zA-Z]+\{([^}]*)\}'), (m) => m[1] ?? '')
+    // remove lone backslash-commands
+    .replaceAll(RegExp(r'\\[a-zA-Z]+\s*'), '');
+}
+
+/// Full cleanup: math → markdown strip → whitespace normalise
+String _cleanBotResponse(String text) {
+  String s = _convertMath(text);
+
+  // Remove code fence markers but keep the content
+  s = s.replaceAllMapped(
+    RegExp(r'```(?:[a-zA-Z0-9_+\-]*)\n?([\s\S]*?)```'),
+    (m) => (m[1] ?? '').trim(),
+  );
+
+  // Remove headers (# ## ### etc.)
+  s = s.replaceAll(RegExp(r'^#{1,6}\s+', multiline: true), '');
+
+  // Remove bold/italic markers (**, *, __, _)
+  s = s.replaceAll(RegExp(r'\*\*\*([^*]+)\*\*\*'), r'$1');
+  s = s.replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1');
+  s = s.replaceAll(RegExp(r'\*([^*\n]+)\*'), r'$1');
+  s = s.replaceAll(RegExp(r'___([^_]+)___'), r'$1');
+  s = s.replaceAll(RegExp(r'__([^_]+)__'), r'$1');
+  s = s.replaceAll(RegExp(r'_([^_\n]+)_'), r'$1');
+
+  // Remove inline backticks but keep content
+  s = s.replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => m[1] ?? '');
+
+  // Remove horizontal rules
+  s = s.replaceAll(RegExp(r'^[-*_]{3,}\s*$', multiline: true), '');
+
+  // Convert markdown links [text](url) → text
+  s = s.replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^)]+\)'), (m) => m[1] ?? '');
+
+  // Remove stray asterisks and underscores that remain
+  s = s.replaceAll(RegExp(r'(?<!\w)\*+(?!\w)'), '');
+  s = s.replaceAll(RegExp(r'(?<!\w)_+(?!\w)'), '');
+
+  // Normalize multiple blank lines to max 2
+  s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+
+  return s.trim();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -189,8 +239,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         await _pickDoc(['txt', 'md', 'csv', 'json', 'log', 'docx']);
         break;
       case 'image':
-        // FIX: No longer base64-encoding the image for vision.
-        // Instead we run on-device OCR and load the text as document context.
         final img = await ImagePicker().pickImage(source: ImageSource.gallery);
         if (img == null) break;
         await _processImageWithOcr(File(img.path));
@@ -198,13 +246,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       case 'file':
         final r = await FilePicker.platform.pickFiles();
         if (r?.files.single.path == null) break;
-        final file     = File(r!.files.single.path!);
-        final mime     = lookupMimeType(file.path) ?? '';
-        // If the picked file is an image, OCR it instead of attaching as binary.
+        final file = File(r!.files.single.path!);
+        final mime = lookupMimeType(file.path) ?? '';
         if (mime.startsWith('image/')) {
           await _processImageWithOcr(file);
         } else {
-          // Non-image "other" files: attempt text extraction by extension.
           final ext = file.path.split('.').last.toLowerCase();
           await _pickDocFromFile(file, ext);
         }
@@ -212,7 +258,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
-  /// OCR an image file and load the result as a DocumentContext.
   Future<void> _processImageWithOcr(File imageFile) async {
     final name = imageFile.path.split('/').last;
     setState(() => _processingDoc = true);
@@ -220,13 +265,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       final text = await _extractOcrText(imageFile);
       if (!mounted) return;
       if (text.isEmpty) {
-        _snack('No text found in image — make sure the image contains readable text.',
-            err: true);
+        _snack('No text found in image.', err: true);
         return;
       }
       ref.read(chatNotifierProvider.notifier)
           .loadDocument(DocumentContext(fileName: '📷 $name (OCR)', text: text));
-      _snack('Image added successfully');
+      _snack('Image added');
     } catch (e) {
       if (mounted) _snack('OCR failed: $e', err: true);
     } finally {
@@ -238,14 +282,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final r = await FilePicker.platform
         .pickFiles(type: FileType.custom, allowedExtensions: exts);
     if (r == null || r.files.single.path == null) return;
-
     final file = File(r.files.single.path!);
     final name = r.files.single.name;
     final ext  = name.split('.').last.toLowerCase();
     await _pickDocFromFile(file, ext, displayName: name);
   }
 
-  /// Shared extraction logic used by both _pickDoc and the 'file' case.
   Future<void> _pickDocFromFile(File file, String ext, {String? displayName}) async {
     final name = displayName ?? file.path.split('/').last;
     setState(() => _processingDoc = true);
@@ -256,14 +298,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       } else if (ext == 'docx') {
         text = await _extractDocxText(await file.readAsBytes());
       } else {
-        // .md, .txt, .csv, .json, etc.
         text = await _readTextFile(file);
       }
-
       if (!mounted) return;
       if (text.trim().isEmpty) {
-        _snack('Could not extract text — file may be image-based or protected.',
-            err: true);
+        _snack('Could not extract text.', err: true);
         return;
       }
       ref.read(chatNotifierProvider.notifier)
@@ -281,8 +320,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    // NOTE: No attachment parameter — images are now loaded as doc context,
-    // not sent as base64 payloads. The backend /document route handles them.
     ref.read(chatNotifierProvider.notifier).sendMessage(text);
     _controller.clear();
     _focusNode.unfocus();
@@ -303,8 +340,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _snack(String msg, {bool err = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg,
-          style: const TextStyle(color: _textPri, fontSize: 13)),
+      content: Text(msg, style: const TextStyle(color: _textPri, fontSize: 13)),
       backgroundColor: err ? const Color(0xFF1A0808) : _accentDim,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -318,8 +354,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final chatState = ref.watch(chatNotifierProvider);
     final docCtx    = ref.watch(documentContextProvider);
     ref.listen<AsyncValue<List<Message>>>(
-        chatNotifierProvider,
-        (_, next) => next.whenData((_) => _scrollDown()));
+        chatNotifierProvider, (_, next) => next.whenData((_) => _scrollDown()));
 
     return Scaffold(
       backgroundColor: _bg,
@@ -379,11 +414,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               border: Border.all(color: _accent.withOpacity(0.3)),
             ),
             child: const Text('DOC',
-                style: TextStyle(
-                    color: _accent,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0)),
+                style: TextStyle(color: _accent, fontSize: 9,
+                    fontWeight: FontWeight.w800, letterSpacing: 1.0)),
           ),
         ],
       ]),
@@ -399,10 +431,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               border: Border.all(color: _border),
             ),
             child: const Text('Clear',
-                style: TextStyle(
-                    color: _textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
+                style: TextStyle(color: _textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
           ),
         ),
       ],
@@ -415,9 +444,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   // ── Doc Banner ─────────────────────────────────────────────────────────────
   Widget _docBanner(DocumentContext doc) {
+    final isOcr = doc.fileName.startsWith('📷');
     final isDocx = doc.fileName.toLowerCase().endsWith('.docx');
-    final isMd   = doc.fileName.toLowerCase().endsWith('.md');
-    final isOcr  = doc.fileName.startsWith('📷');
     return Container(
       color: const Color(0xFF080808),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -425,34 +453,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         Container(
           width: 32, height: 32,
           decoration: BoxDecoration(
-            color: (isOcr
-                    ? _success
-                    : isDocx
-                        ? _accent
-                        : _danger)
-                .withOpacity(0.08),
+            color: (isOcr ? _success : isDocx ? _accent : _danger).withOpacity(0.08),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: (isOcr
-                        ? _success
-                        : isDocx
-                            ? _accent
-                            : _danger)
-                    .withOpacity(0.2)),
+            border: Border.all(color: (isOcr ? _success : isDocx ? _accent : _danger).withOpacity(0.2)),
           ),
           child: Icon(
-            isOcr
-                ? Icons.image_search_outlined
-                : isDocx
-                    ? Icons.description_outlined
-                    : isMd
-                        ? Icons.article_outlined
-                        : Icons.picture_as_pdf,
-            color: isOcr
-                ? _success
-                : isDocx
-                    ? _accent
-                    : _danger,
+            isOcr ? Icons.image_search_outlined : isDocx ? Icons.description_outlined : Icons.picture_as_pdf,
+            color: isOcr ? _success : isDocx ? _accent : _danger,
             size: 15,
           ),
         ),
@@ -460,24 +467,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(doc.fileName,
-                style: const TextStyle(
-                    color: _textPri, fontSize: 12, fontWeight: FontWeight.w700),
+                style: const TextStyle(color: _textPri, fontSize: 12, fontWeight: FontWeight.w700),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(
-              'Ask anything about this document',
-              style: const TextStyle(color: _textMuted, fontSize: 11),
-            ),
+            const Text('Ask anything about this document',
+                style: TextStyle(color: _textMuted, fontSize: 11)),
           ]),
         ),
         GestureDetector(
           onTap: () => ref.read(chatNotifierProvider.notifier).clearDocument(),
           child: Container(
             width: 26, height: 26,
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(7),
-              border: Border.all(color: _border),
-            ),
+            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(7), border: Border.all(color: _border)),
             child: const Icon(Icons.close, color: _textMuted, size: 13),
           ),
         ),
@@ -496,17 +496,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               itemCount: msgs.length,
               itemBuilder: (_, i) {
                 final prev = i > 0 ? msgs[i - 1] : null;
-                return _bubble(msgs[i],
-                    showAvatar: prev?.type != msgs[i].type);
+                return _bubble(msgs[i], showAvatar: prev?.type != msgs[i].type);
               },
             ),
       loading: () => const Center(
           child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation(_accent))),
+              strokeWidth: 2, valueColor: AlwaysStoppedAnimation(_accent))),
       error: (e, _) => Center(
-          child: Text('Error: $e',
-              style: const TextStyle(color: _danger, fontSize: 13))),
+          child: Text('Error: $e', style: const TextStyle(color: _danger, fontSize: 13))),
     );
   }
 
@@ -515,26 +512,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           width: 56, height: 56,
-          decoration: BoxDecoration(
-            color: _surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _border),
-          ),
+          decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: _border)),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(13),
-            child: Image.asset(_logoPath,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.auto_awesome, color: _accent, size: 26)),
+            child: Image.asset(_logoPath, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome, color: _accent, size: 26)),
           ),
         ),
         const SizedBox(height: 16),
         const Text('STREMINI AI',
-            style: TextStyle(
-                color: _textPri,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2.0)),
+            style: TextStyle(color: _textPri, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 2.0)),
         const SizedBox(height: 6),
         const Text('How can I help you today?',
             style: TextStyle(color: _textMuted, fontSize: 13)),
@@ -551,23 +538,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         return _docAnnounce(message.text);
       default:
         final isUser = message.type == MessageType.user;
-        final displayText = isUser ? message.text : _stripMarkdown(message.text);
+        // IMPROVED: use full cleanup for bot, raw text for user
+        final displayText = isUser ? message.text : _cleanBotResponse(message.text);
         return Padding(
           padding: EdgeInsets.only(bottom: 4, top: showAvatar ? 14 : 2),
           child: Row(
-            mainAxisAlignment:
-                isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (!isUser && showAvatar) ...[
-                _botAvatar(),
-                const SizedBox(width: 8),
-              ],
+              if (!isUser && showAvatar) ...[_botAvatar(), const SizedBox(width: 8)],
               if (!isUser && !showAvatar) const SizedBox(width: 34),
               Flexible(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 11),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                   decoration: BoxDecoration(
                     color: isUser ? _userBubble : _botBubble,
                     borderRadius: BorderRadius.only(
@@ -577,20 +560,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                       bottomRight: Radius.circular(isUser ? 4 : 14),
                     ),
                     border: Border.all(
-                        color: isUser
-                            ? _accent.withOpacity(0.18)
-                            : _border),
+                        color: isUser ? _accent.withOpacity(0.18) : _border),
                   ),
-                  child: SelectableText(displayText,
-                      style: const TextStyle(
-                          color: _textPri, fontSize: 14, height: 1.55),
-                      cursorColor: _accent),
+                  child: _renderContent(displayText, isUser),
                 ),
               ),
-              if (isUser && showAvatar) ...[
-                const SizedBox(width: 8),
-                _userAvatar(),
-              ],
+              if (isUser && showAvatar) ...[const SizedBox(width: 8), _userAvatar()],
               if (isUser && !showAvatar) const SizedBox(width: 30),
             ],
           ),
@@ -598,29 +573,75 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
+  /// Renders text with inline code blocks styled distinctly
+  Widget _renderContent(String text, bool isUser) {
+    // Split on inline code-like patterns (anything that looks like a formula or code)
+    // We render them in a monospace accent style
+    final parts = _splitForRendering(text);
+    if (parts.length == 1) {
+      // Simple text, no special segments
+      return SelectableText(
+        text,
+        style: const TextStyle(color: _textPri, fontSize: 14, height: 1.6),
+        cursorColor: _accent,
+      );
+    }
+    return SelectableText.rich(
+      TextSpan(
+        children: parts.map((part) {
+          if (part.isCode) {
+            return TextSpan(
+              text: part.text,
+              style: TextStyle(
+                color: _accent,
+                fontSize: 13,
+                fontFamily: 'monospace',
+                background: Paint()..color = _accent.withOpacity(0.08),
+                height: 1.6,
+              ),
+            );
+          }
+          return TextSpan(
+            text: part.text,
+            style: const TextStyle(color: _textPri, fontSize: 14, height: 1.6),
+          );
+        }).toList(),
+      ),
+      cursorColor: _accent,
+    );
+  }
+
+  List<_TextPart> _splitForRendering(String text) {
+    // Look for math-expression patterns: numbers with operators, or capitalized formula-like text
+    final codePattern = RegExp(r'([A-Za-z]\^[A-Za-z0-9]+|[A-Za-z]_[A-Za-z0-9]+|√\([^)]+\)|\([^)]+\)\/\([^)]+\)|∑|∫|≈|≠|≤|≥)');
+    final spans = <_TextPart>[];
+    int last = 0;
+    for (final match in codePattern.allMatches(text)) {
+      if (match.start > last) {
+        spans.add(_TextPart(text.substring(last, match.start), false));
+      }
+      spans.add(_TextPart(match[0]!, true));
+      last = match.end;
+    }
+    if (last < text.length) {
+      spans.add(_TextPart(text.substring(last), false));
+    }
+    return spans.isEmpty ? [_TextPart(text, false)] : spans;
+  }
+
   Widget _botAvatar() => ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Container(
           width: 28, height: 28,
-          decoration: BoxDecoration(
-            color: _surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _border),
-          ),
-          child: Image.asset(_logoPath, width: 28, height: 28,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.auto_awesome, color: _accent, size: 13)),
+          decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: _border)),
+          child: Image.asset(_logoPath, width: 28, height: 28, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome, color: _accent, size: 13)),
         ),
       );
 
   Widget _userAvatar() => Container(
         width: 28, height: 28,
-        decoration: BoxDecoration(
-          color: _surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _border),
-        ),
+        decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: _border)),
         child: const Icon(Icons.person_outline, color: _textMuted, size: 14),
       );
 
@@ -635,10 +656,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         child: Row(children: [
           const Icon(Icons.picture_as_pdf, color: _danger, size: 15),
           const SizedBox(width: 10),
-          Expanded(
-              child: Text(text,
-                  style: const TextStyle(
-                      color: _textMuted, fontSize: 13, height: 1.5))),
+          Expanded(child: Text(text, style: const TextStyle(color: _textMuted, fontSize: 13, height: 1.5))),
         ]),
       );
 
@@ -652,42 +670,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             decoration: BoxDecoration(
               color: _botBubble,
               borderRadius: const BorderRadius.only(
-                topLeft:     Radius.circular(14),
-                topRight:    Radius.circular(14),
-                bottomRight: Radius.circular(14),
-                bottomLeft:  Radius.circular(4),
+                topLeft: Radius.circular(14), topRight: Radius.circular(14),
+                bottomRight: Radius.circular(14), bottomLeft: Radius.circular(4),
               ),
               border: Border.all(color: _border),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: List.generate(
-                  3,
-                  (i) => Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        width: 5, height: 5,
-                        decoration: BoxDecoration(
-                          color: _textMuted.withOpacity(0.45),
-                          shape: BoxShape.circle,
-                        ))),
+              children: List.generate(3, (i) => Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                width: 5, height: 5,
+                decoration: BoxDecoration(
+                  color: _textMuted.withOpacity(0.45),
+                  shape: BoxShape.circle,
+                ),
+              )),
             ),
           ),
         ]),
       );
 
-  // ── Processing bar ─────────────────────────────────────────────────────────
   Widget _processingBar() => Container(
         color: _surface,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         child: const Row(children: [
-          SizedBox(
-              width: 14, height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation(_accent))),
+          SizedBox(width: 14, height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(_accent))),
           SizedBox(width: 10),
-          Text('Extracting text…',
-              style: TextStyle(color: _textMuted, fontSize: 13)),
+          Text('Extracting text…', style: TextStyle(color: _textMuted, fontSize: 13)),
         ]),
       );
 
@@ -709,12 +719,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 width: 40, height: 40,
                 margin: const EdgeInsets.only(bottom: 6),
                 decoration: BoxDecoration(
-                  color: _surface,
-                  borderRadius: BorderRadius.circular(10),
+                  color: _surface, borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: _border),
                 ),
-                child: const Icon(Icons.add_rounded,
-                    color: _textMuted, size: 20),
+                child: const Icon(Icons.add_rounded, color: _textMuted, size: 20),
               ),
             ),
             const SizedBox(width: 8),
@@ -725,25 +733,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 decoration: BoxDecoration(
                   color: _surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: docCtx != null
-                          ? _accent.withOpacity(0.35)
-                          : _border),
+                  border: Border.all(color: docCtx != null ? _accent.withOpacity(0.35) : _border),
                 ),
                 child: TextField(
                   controller: _controller,
                   focusNode: _focusNode,
-                  style: const TextStyle(
-                      color: _textPri, fontSize: 14, height: 1.45),
+                  style: const TextStyle(color: _textPri, fontSize: 14, height: 1.45),
                   decoration: InputDecoration(
-                    hintText: docCtx != null
-                        ? 'Ask about ${docCtx.fileName}…'
-                        : 'Message Stremini…',
-                    hintStyle:
-                        const TextStyle(color: _textDim, fontSize: 14),
+                    hintText: docCtx != null ? 'Ask about ${docCtx.fileName}…' : 'Message Stremini…',
+                    hintStyle: const TextStyle(color: _textDim, fontSize: 14),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   ),
                   maxLines: null,
                   textInputAction: TextInputAction.send,
@@ -757,12 +757,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               child: Container(
                 width: 40, height: 40,
                 margin: const EdgeInsets.only(bottom: 6),
-                decoration: BoxDecoration(
-                  color: _accent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.arrow_upward_rounded,
-                    color: Colors.white, size: 20),
+                decoration: BoxDecoration(color: _accent, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
               ),
             ),
           ],
@@ -795,14 +791,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             onTap: () {
               Navigator.pop(context);
               Navigator.push(context,
-                  MaterialPageRoute(
-                      builder: (_) => const ContactUsScreen()));
+                  MaterialPageRoute(builder: (_) => const ContactUsScreen()));
             }),
       ]);
 }
 
+// Helper class for rich text rendering
+class _TextPart {
+  final String text;
+  final bool isCode;
+  const _TextPart(this.text, this.isCode);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Attach bottom sheet
+// Attach bottom sheet (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AttachSheet extends StatelessWidget {
@@ -819,48 +821,29 @@ class _AttachSheet extends StatelessWidget {
           Container(
             width: 36, height: 4,
             margin: const EdgeInsets.only(bottom: 18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF222222),
-              borderRadius: BorderRadius.circular(2),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(2)),
           ),
           const Align(
             alignment: Alignment.centerLeft,
             child: Text('Attach',
-                style: TextStyle(
-                    color: _textPri,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2)),
+                style: TextStyle(color: _textPri, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.2)),
           ),
           const SizedBox(height: 14),
-          _tile(context, Icons.picture_as_pdf_outlined, _danger,
-              'PDF Document', 'Chat about a PDF file', 'pdf'),
-          _tile(context, Icons.description_outlined, _accent,
-              'Document / Text',
-              'TXT, MD, CSV, JSON, DOCX', 'text'),
-          _tile(context, Icons.image_search_outlined, const Color(0xFF8B5CF6),
-              'Image',
-              'Use image as chat context', 'image'),
-          _tile(context, Icons.attach_file_rounded,
-              const Color(0xFFF59E0B), 'Other File', 'Any file type',
-              'file'),
+          _tile(context, Icons.picture_as_pdf_outlined, _danger, 'PDF Document', 'Chat about a PDF file', 'pdf'),
+          _tile(context, Icons.description_outlined, _accent, 'Document / Text', 'TXT, MD, CSV, JSON, DOCX', 'text'),
+          _tile(context, Icons.image_search_outlined, const Color(0xFF8B5CF6), 'Image', 'Use image as chat context', 'image'),
+          _tile(context, Icons.attach_file_rounded, const Color(0xFFF59E0B), 'Other File', 'Any file type', 'file'),
         ],
       ),
     );
   }
 
-  Widget _tile(BuildContext ctx, IconData icon, Color iconColor,
-      String title, String subtitle, String type) {
+  Widget _tile(BuildContext ctx, IconData icon, Color iconColor, String title, String subtitle, String type) {
     return GestureDetector(
-      onTap: () {
-        Navigator.pop(ctx);
-        onPicked(type);
-      },
+      onTap: () { Navigator.pop(ctx); onPicked(type); },
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
           color: const Color(0xFF0A0A0A),
           borderRadius: BorderRadius.circular(12),
@@ -869,28 +852,15 @@ class _AttachSheet extends StatelessWidget {
         child: Row(children: [
           Container(
             width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: iconColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: iconColor, size: 18),
           ),
           const SizedBox(width: 13),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(title,
-                    style: const TextStyle(
-                        color: _textPri,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600)),
-                Text(subtitle,
-                    style: const TextStyle(
-                        color: _textMuted, fontSize: 11)),
-              ])),
-          const Icon(Icons.chevron_right,
-              color: _textDim, size: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(color: _textPri, fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(subtitle, style: const TextStyle(color: _textMuted, fontSize: 11)),
+          ])),
+          const Icon(Icons.chevron_right, color: _textDim, size: 16),
         ]),
       ),
     );
