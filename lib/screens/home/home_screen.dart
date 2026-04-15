@@ -31,11 +31,17 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  late AnimationController _shimmerCtrl;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _shimmerCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(homeControllerProvider.notifier).checkPermissions();
     });
@@ -44,6 +50,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _shimmerCtrl.dispose();
     super.dispose();
   }
 
@@ -70,7 +77,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final authState = ref.watch(authProvider);
     String tr(String key) => AppStrings.t(settings.language, key);
 
-    // Extract first name from user display name or email
     final displayName = authState.user?.userMetadata?['full_name']?.toString() ??
         authState.user?.email?.split('@').first ??
         'User';
@@ -81,7 +87,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(next.errorMessage!),
-            backgroundColor: AppColors.danger,
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
         controller.clearError();
@@ -89,236 +97,429 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     });
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF030507),
       drawer: _buildDrawer(context, tr),
-      body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: _buildAppBar(context),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 28),
-
-                    // --- Greeting Section ---
-                    Text(
-                      _greeting(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        height: 1.1,
-                      ),
-                    ),
-                    Text(
-                      firstName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Operational status: ${state.bubbleActive ? "Nominal" : "Standby"}',
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 15,
-                        letterSpacing: 0.1,
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-
-                    // --- AI Agent Status Card ---
-                    _buildAgentCard(state, controller),
-                    const SizedBox(height: 16),
-
-                    // --- System Access Rows ---
-                    _buildSystemAccess(state, controller),
-                    const SizedBox(height: 28),
-
-                    // --- Core Modules Grid ---
-                    _buildSectionLabel('CORE MODULES'),
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(child: _buildAppBar(context)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 32),
+                  _buildGreeting(firstName, state),
+                  const SizedBox(height: 28),
+                  _buildAgentCard(state, controller),
+                  const SizedBox(height: 16),
+                  _buildSystemAccess(state, controller),
+                  const SizedBox(height: 32),
+                  _buildSectionLabel('CORE MODULES'),
+                  const SizedBox(height: 14),
+                  _buildModulesGrid(context, state, controller, keyboardStatus),
+                  const SizedBox(height: 32),
+                  if (!state.permissionStatus.hasAll) ...[
+                    _buildSectionLabel('REQUIRED PERMISSIONS'),
                     const SizedBox(height: 14),
-                    _buildModulesGrid(context, state, controller, keyboardStatus),
-                    const SizedBox(height: 28),
-
-                    // --- Dynamic Permissions Section ---
-                    if (!state.permissionStatus.hasAll) ...[
-                      _buildSectionLabel('REQUIRED PERMISSIONS'),
-                      const SizedBox(height: 14),
-                      _buildPermissionsSection(state, controller),
-                      const SizedBox(height: 28),
-                    ],
-
-                    const SizedBox(height: 40),
+                    _buildPermissionsSection(state, controller),
+                    const SizedBox(height: 32),
                   ],
-                ),
+                  const SizedBox(height: 48),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- UI Component: App Bar ---
   Widget _buildAppBar(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      color: Colors.black,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 12,
+        left: 20,
+        right: 20,
+        bottom: 14,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF030507),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.05), width: 1),
+        ),
+      ),
       child: Row(
         children: [
           Builder(
             builder: (ctx) => GestureDetector(
               onTap: () => Scaffold.of(ctx).openDrawer(),
-              child: const Icon(Icons.menu, color: Colors.white, size: 28),
-            ),
-          ),
-          const SizedBox(width: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(
-              _logoPath,
-              width: 26,
-              height: 26,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.auto_awesome, color: Color(0xFF23A6E2), size: 20),
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Text(
-            'STREMINI AI',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.8,
-            ),
-          ),
-          const Spacer(),
-          const Icon(Icons.tune, color: Colors.white, size: 22),
-          const SizedBox(width: 14),
-          GestureDetector(
-             onTap: () => Navigator.of(context).pop(), // Functional close button
-             child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFF111111),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF1C1C1C)),
-              ),
-              child: const Icon(Icons.close, color: Colors.white, size: 18),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- UI Component: Agent Activation Card ---
-  Widget _buildAgentCard(HomeState state, HomeController controller) {
-    final isActive = state.bubbleActive;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1C1C1C)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 9,
-            height: 9,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isActive ? const Color(0xFF23A6E2) : const Color(0xFF3A4255),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isActive ? 'AI Agent Active' : 'AI Agent Inactive',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  isActive ? 'System-wide assistant running' : 'Tap Start to activate',
-                  style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                child: const Icon(Icons.menu, color: Colors.white, size: 20),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          // Logo
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF23A6E2).withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: Image.asset(
+                _logoPath,
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF23A6E2), Color(0xFF0A5F8F)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: const Icon(Icons.auto_awesome, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          _agentBtn(
-            'Pause',
-            const Color(0xFF1A1A1A),
-            isActive ? const Color(0xFF8B95A6) : const Color(0xFF4A5568),
-            isActive
-                ? () async {
-                    await controller.toggleBubble(false);
-                  }
-                : null,
+          const SizedBox(width: 10),
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [Color(0xFF23A6E2), Color(0xFF8DDCFF)],
+            ).createShader(bounds),
+            child: const Text(
+              'STREMINI AI',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2.0,
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          _agentBtn(
-            isActive ? 'Running' : 'Start',
-            const Color(0xFF1A1A1A),
-            Colors.white,
-            () async {
-              if (isActive) return;
-              await controller.toggleBubble(true);
-            },
+          const Spacer(),
+          _buildStatusDot(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusDot() {
+    final state = ref.watch(homeControllerProvider);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: state.bubbleActive
+            ? const Color(0xFF0A2518)
+            : Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: state.bubbleActive
+              ? const Color(0xFF34C47C).withOpacity(0.4)
+              : Colors.white.withOpacity(0.08),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: state.bubbleActive
+                  ? const Color(0xFF34C47C)
+                  : const Color(0xFF3A4255),
+              boxShadow: state.bubbleActive
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF34C47C).withOpacity(0.6),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            state.bubbleActive ? 'LIVE' : 'IDLE',
+            style: TextStyle(
+              color: state.bubbleActive
+                  ? const Color(0xFF34C47C)
+                  : const Color(0xFF4A5568),
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _agentBtn(String label, Color bg, Color textColor, VoidCallback? onTap) {
+  Widget _buildGreeting(String firstName, HomeState state) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _greeting(),
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.4),
+            fontSize: 18,
+            fontWeight: FontWeight.w400,
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          firstName,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 42,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.5,
+            height: 1.05,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: state.bubbleActive
+                    ? const Color(0xFF34C47C)
+                    : const Color(0xFF3A4255),
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              state.bubbleActive
+                  ? 'System operational — AI agent running'
+                  : 'System standby — tap Start to activate',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.3),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAgentCard(HomeState state, HomeController controller) {
+    final isActive = state.bubbleActive;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D0F14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isActive
+              ? const Color(0xFF23A6E2).withOpacity(0.2)
+              : Colors.white.withOpacity(0.07),
+        ),
+        boxShadow: isActive
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF23A6E2).withOpacity(0.08),
+                  blurRadius: 40,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? const Color(0xFF23A6E2).withOpacity(0.12)
+                      : Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isActive
+                        ? const Color(0xFF23A6E2).withOpacity(0.25)
+                        : Colors.white.withOpacity(0.08),
+                  ),
+                ),
+                child: Icon(
+                  isActive ? Icons.memory_rounded : Icons.power_settings_new_rounded,
+                  color: isActive ? const Color(0xFF23A6E2) : const Color(0xFF4A5568),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isActive ? 'AI Agent Active' : 'AI Agent Inactive',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isActive
+                          ? 'System-wide intelligence running'
+                          : 'Activate to enable AI overlay',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _agentBtn(
+                  label: 'Pause',
+                  onTap: isActive
+                      ? () async => await controller.toggleBubble(false)
+                      : null,
+                  active: false,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: _agentBtnPrimary(
+                  label: isActive ? 'Running' : 'Start Agent',
+                  onTap: isActive ? null : () async => await controller.toggleBubble(true),
+                  isActive: isActive,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _agentBtn(String label, VoidCallback? onTap, {bool active = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.w600),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: onTap != null ? Colors.white : const Color(0xFF3A4255),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  // --- UI Component: Permission/System Toggles ---
+  Widget _agentBtnPrimary(String label, VoidCallback? onTap, {bool isActive = false}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          gradient: isActive
+              ? null
+              : const LinearGradient(
+                  colors: [Color(0xFF23A6E2), Color(0xFF0A5F8F)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+          color: isActive ? Colors.white.withOpacity(0.04) : null,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive
+                ? const Color(0xFF23A6E2).withOpacity(0.2)
+                : Colors.transparent,
+          ),
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isActive) ...[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF23A6E2),
+                  ),
+                ),
+                const SizedBox(width: 7),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: isActive ? const Color(0xFF23A6E2) : Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSystemAccess(HomeState state, HomeController controller) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1C1C1C)),
+        color: const Color(0xFF0D0F14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
       ),
       child: Column(
         children: [
@@ -358,22 +559,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
           child: Row(
             children: [
-              Icon(icon, color: const Color(0xFF6B7280), size: 20),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: isEnabled
+                      ? const Color(0xFF23A6E2).withOpacity(0.08)
+                      : Colors.white.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: isEnabled ? const Color(0xFF23A6E2) : const Color(0xFF4A5568),
+                  size: 17,
+                ),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: isEnabled ? Colors.white : Colors.white.withOpacity(0.5),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
               if (isEnabled) ...[
-                const Text(
+                Text(
                   'ENABLED',
                   style: TextStyle(
-                    color: Color(0xFF4A5568),
+                    color: const Color(0xFF23A6E2).withOpacity(0.6),
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.0,
@@ -383,25 +602,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 Container(
                   width: 22,
                   height: 22,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF23A6E2),
+                    color: const Color(0xFF23A6E2).withOpacity(0.15),
+                    border: Border.all(color: const Color(0xFF23A6E2).withOpacity(0.3)),
                   ),
-                  child: const Icon(Icons.check, color: Colors.white, size: 13),
+                  child: const Icon(Icons.check, color: Color(0xFF23A6E2), size: 12),
                 ),
               ] else
                 GestureDetector(
                   onTap: onTap,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F1117),
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(color: const Color(0xFF1C2030)),
+                      color: const Color(0xFF23A6E2).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: const Color(0xFF23A6E2).withOpacity(0.2)),
                     ),
                     child: const Text(
                       'Enable',
-                      style: TextStyle(color: Color(0xFF23A6E2), fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: Color(0xFF23A6E2),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -409,7 +633,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           ),
         ),
         if (!isLast)
-          const Divider(height: 1, color: Color(0xFF191919), indent: 18, endIndent: 18),
+          Divider(
+            height: 1,
+            color: Colors.white.withOpacity(0.05),
+            indent: 18,
+            endIndent: 18,
+          ),
       ],
     );
   }
@@ -417,16 +646,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget _buildSectionLabel(String label) {
     return Text(
       label,
-      style: const TextStyle(
-        color: Color(0xFF3A4255),
+      style: TextStyle(
+        color: Colors.white.withOpacity(0.2),
         fontSize: 11,
         fontWeight: FontWeight.w700,
-        letterSpacing: 1.5,
+        letterSpacing: 1.8,
       ),
     );
   }
 
-  // --- UI Component: Main Module Grid ---
   Widget _buildModulesGrid(
     BuildContext context,
     HomeState state,
@@ -440,7 +668,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Expanded(
               child: _moduleCard(
                 icon: Icons.shield_outlined,
-                iconColor: const Color(0xFF23A6E2),
+                gradient: const [Color(0xFF23A6E2), Color(0xFF0A5F8F)],
                 title: 'Scam Detection',
                 subtitle: 'Real-time protection',
                 statusLabel: 'ACTIVE',
@@ -452,14 +680,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Expanded(
               child: _moduleCard(
                 icon: Icons.calendar_today_outlined,
-                iconColor: const Color(0xFF23A6E2),
+                gradient: const [Color(0xFF8B5CF6), Color(0xFF5B21B6)],
                 title: 'Smart Scheduler',
                 subtitle: 'AI task planning',
                 statusLabel: 'VIEW',
-                statusColor: const Color(0xFF4A5568),
+                statusColor: const Color(0xFF8B5CF6),
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => SmartSchedulerScreen()),
+                  MaterialPageRoute(builder: (_) => const SmartSchedulerScreen()),
                 ),
               ),
             ),
@@ -471,11 +699,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Expanded(
               child: _moduleCard(
                 icon: Icons.integration_instructions_outlined,
-                iconColor: const Color(0xFF23A6E2),
+                gradient: const [Color(0xFFF59E0B), Color(0xFFD97706)],
                 title: 'GitHub Agent',
                 subtitle: 'Autonomous code ops',
                 statusLabel: 'READY',
-                statusColor: const Color(0xFF4A5568),
+                statusColor: const Color(0xFFF59E0B),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => StreminiAgentScreen()),
@@ -487,7 +715,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               child: keyboardStatus.when(
                 data: (status) => _moduleCard(
                   icon: Icons.keyboard_outlined,
-                  iconColor: const Color(0xFF23A6E2),
+                  gradient: const [Color(0xFF34C47C), Color(0xFF16A34A)],
                   title: 'AI Keyboard',
                   subtitle: status.isActive ? 'Ready to type' : 'Needs setup',
                   statusLabel: status.isActive ? 'ACTIVE' : 'SETUP',
@@ -496,7 +724,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
                 loading: () => _moduleCard(
                   icon: Icons.keyboard_outlined,
-                  iconColor: const Color(0xFF23A6E2),
+                  gradient: const [Color(0xFF34C47C), Color(0xFF16A34A)],
                   title: 'AI Keyboard',
                   subtitle: 'Checking...',
                   statusLabel: '...',
@@ -505,7 +733,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
                 error: (_, __) => _moduleCard(
                   icon: Icons.keyboard_outlined,
-                  iconColor: const Color(0xFF23A6E2),
+                  gradient: const [Color(0xFF34C47C), Color(0xFF16A34A)],
                   title: 'AI Keyboard',
                   subtitle: 'Open settings',
                   statusLabel: 'SETUP',
@@ -516,13 +744,72 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        _buildQuickChatBanner(context),
       ],
+    );
+  }
+
+  Widget _buildQuickChatBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ChatScreen()),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D0F14),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.07)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFF23A6E2).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF23A6E2).withOpacity(0.2)),
+              ),
+              child: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF23A6E2), size: 19),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Quick Chat',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Ask anything, attach documents',
+                    style: TextStyle(color: Color(0xFF4A5568), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: const Color(0xFF23A6E2).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF23A6E2), size: 13),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _moduleCard({
     required IconData icon,
-    required Color iconColor,
+    required List<Color> gradient,
     required String title,
     required String subtitle,
     required String statusLabel,
@@ -532,66 +819,66 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF131313), Color(0xFF10131A)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF1F2430)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 16,
-              offset: Offset(0, 8),
-            ),
-          ],
+          color: const Color(0xFF0D0F14),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.07)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(11),
+                gradient: LinearGradient(
+                  colors: [gradient[0].withOpacity(0.15), gradient[1].withOpacity(0.08)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: gradient[0].withOpacity(0.2)),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: gradient[0], size: 20),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
+              ),
             ),
             const SizedBox(height: 3),
             Text(
               subtitle,
-              style: const TextStyle(color: Color(0xFF4A5568), fontSize: 11),
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.3),
+                fontSize: 11,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: statusColor.withOpacity(0.2)),
+              ),
+              child: Text(
+                statusLabel,
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
                 ),
-                const SizedBox(width: 5),
-                Text(
-                  statusLabel,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
@@ -599,7 +886,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // --- UI Component: Required Permissions List ---
   Widget _buildPermissionsSection(HomeState state, HomeController controller) {
     return Column(
       children: [
@@ -638,15 +924,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   Widget _permCard(String title, String description, IconData icon, Color color, VoidCallback onTap) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: color.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.15)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 22),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, color: color, size: 19),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -654,7 +948,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               children: [
                 Text(title, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
-                Text(description, style: const TextStyle(color: Color(0xFF4A5568), fontSize: 11)),
+                Text(description, style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11)),
               ],
             ),
           ),
@@ -662,10 +956,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           GestureDetector(
             onTap: onTap,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: color.withOpacity(0.2)),
               ),
               child: Text('Enable', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
             ),
@@ -675,23 +970,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // --- UI Component: App Drawer ---
   Widget _buildDrawer(BuildContext context, String Function(String) tr) {
     void closeDrawer() => Scaffold.maybeOf(context)?.closeDrawer();
-
     return AppDrawer(
       items: [
-        AppDrawerItem(
-          icon: Icons.home_outlined,
-          title: 'Home',
-          onTap: closeDrawer,
-        ),
+        AppDrawerItem(icon: Icons.home_outlined, title: 'Home', onTap: closeDrawer),
         AppDrawerItem(
           icon: Icons.calendar_today_outlined,
           title: 'Smart Scheduler',
           onTap: () {
             closeDrawer();
-            Navigator.push(context, MaterialPageRoute(builder: (_) => SmartSchedulerScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const SmartSchedulerScreen()));
           },
         ),
         AppDrawerItem(
@@ -707,7 +996,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           title: 'Quick Chat',
           onTap: () {
             closeDrawer();
-            Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
           },
         ),
         AppDrawerItem(
@@ -723,7 +1012,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           title: tr('settings'),
           onTap: () {
             closeDrawer();
-            Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
           },
         ),
         AppDrawerItem(
@@ -731,7 +1020,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           title: 'Contact Us',
           onTap: () {
             closeDrawer();
-            Navigator.push(context, MaterialPageRoute(builder: (_) => ContactUsScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactUsScreen()));
           },
         ),
         AppDrawerItem(
@@ -746,7 +1035,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // --- Logic: Handlers ---
   Future<void> _handleScamDetectionTap() async {
     final scannerNotifier = ref.read(scannerStateProvider.notifier);
     await scannerNotifier.toggleScanning();
@@ -756,6 +1044,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       content: Text(scannerState.error ??
           (scannerState.isActive ? 'Scam detection started' : 'Scam detection stopped')),
       backgroundColor: scannerState.error == null ? AppColors.success : AppColors.warning,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
 
@@ -772,7 +1062,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('AI Keyboard is already active'), backgroundColor: AppColors.success),
+      const SnackBar(
+        content: Text('AI Keyboard is already active'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -787,8 +1081,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF111111),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        backgroundColor: const Color(0xFF0D0F14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text(
           'Allow Accessibility Service',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
@@ -798,9 +1092,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Stremini uses Accessibility Service to protect you from scams in real-time.',
-                style: TextStyle(color: Color(0xFF8B95A6), fontSize: 14, height: 1.5),
+                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14, height: 1.5),
               ),
               const SizedBox(height: 14),
               const Text(
@@ -808,17 +1102,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 style: TextStyle(color: Color(0xFF23A6E2), fontWeight: FontWeight.w600, fontSize: 13),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '• Detect suspicious links and scam patterns\n'
                 '• Analyze visible screen text for fraud warnings\n'
                 '• Keep the floating assistant responsive\n'
                 '• Trigger alerts while you browse or chat',
-                style: TextStyle(color: Color(0xFF8B95A6), fontSize: 13, height: 1.6),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'You can disable this anytime in Accessibility Settings.',
-                style: TextStyle(color: Color(0xFF4A5568), fontSize: 12),
+                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13, height: 1.6),
               ),
             ],
           ),
@@ -826,11 +1115,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Not now', style: TextStyle(color: Color(0xFF4A5568))),
+            child: Text('Not now', style: TextStyle(color: Colors.white.withOpacity(0.3))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(backgroundColor: const Color(0xFF23A6E2).withOpacity(0.12)),
+            style: TextButton.styleFrom(backgroundColor: const Color(0xFF23A6E2).withOpacity(0.1)),
             child: const Text('Continue', style: TextStyle(color: Color(0xFF23A6E2))),
           ),
         ],
