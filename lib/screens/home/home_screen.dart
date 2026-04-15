@@ -439,7 +439,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _agentBtn(String label, VoidCallback? onTap, {bool active = false}) {
+  Widget _agentBtn({required String label, required VoidCallback? onTap, bool active = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -463,7 +463,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _agentBtnPrimary(String label, VoidCallback? onTap, {bool isActive = false}) {
+  Widget _agentBtnPrimary({required String label, required VoidCallback? onTap, bool isActive = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
