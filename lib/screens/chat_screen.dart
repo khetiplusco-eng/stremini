@@ -7,7 +7,6 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +14,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:mime/mime.dart';
-import 'package:syncfusion_flutter_pdf/syncfusion_flutter_pdf.dart';
 
 import '../core/widgets/app_drawer.dart';
 import '../providers/chat_provider.dart';
@@ -42,16 +40,18 @@ const _logoPath  = 'lib/img/logo.jpg';
 // ── Text extraction helpers (unchanged) ──────────────────────────────────────
 
 Future<String> _extractPdfText(List<int> bytes) async {
+  // Fallback parser: try to decode readable text streams from PDF bytes.
+  // This avoids a hard dependency on a PDF parsing package at runtime.
   try {
-    final doc = PdfDocument(inputBytes: Uint8List.fromList(bytes));
-    final extractor = PdfTextExtractor(doc);
-    final buf = StringBuffer();
-    for (int i = 0; i < doc.pages.count; i++) {
-      final t = extractor.extractText(startPageIndex: i, endPageIndex: i);
-      if (t.trim().isNotEmpty) { buf.writeln(t.trim()); buf.writeln(); }
+    final raw = utf8.decode(bytes, allowMalformed: true);
+    final matches = RegExp(r'[\x20-\x7E]{8,}').allMatches(raw);
+    if (matches.isEmpty) return '';
+    final parts = <String>[];
+    for (final m in matches) {
+      final text = m.group(0)?.trim() ?? '';
+      if (text.isNotEmpty) parts.add(text);
     }
-    doc.dispose();
-    return buf.toString().trim();
+    return parts.join('\n').trim();
   } catch (e) {
     debugPrint('[PDF] $e');
     return '';
@@ -150,7 +150,7 @@ String _cleanBotResponse(String text) {
   );
 
   // Remove headers (# ## ### etc.)
-  s = s.replaceAll(RegExp(r'^#{1,6}\s+', multiline: true), '');
+  s = s.replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
 
   // Remove bold/italic markers (**, *, __, _)
   s = s.replaceAll(RegExp(r'\*\*\*([^*]+)\*\*\*'), r'$1');
@@ -164,7 +164,7 @@ String _cleanBotResponse(String text) {
   s = s.replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => m[1] ?? '');
 
   // Remove horizontal rules
-  s = s.replaceAll(RegExp(r'^[-*_]{3,}\s*$', multiline: true), '');
+  s = s.replaceAll(RegExp(r'^[-*_]{3,}\s*$', multiLine: true), '');
 
   // Convert markdown links [text](url) → text
   s = s.replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^)]+\)'), (m) => m[1] ?? '');
