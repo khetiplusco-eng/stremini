@@ -1,8 +1,9 @@
-// chat_screen.dart — PREMIUM REDESIGN v2
-// Design: Liquid obsidian — deep blacks, electric cyan accent, editorial grid
-// Typography: Surgical hierarchy, monospaced for code, humanist for prose
-// ALL FUNCTIONALITY PRESERVED + mic button now opens voice snackbar
-// Attachment, clear, menu — all wired. Suggestions are functional.
+// chat_screen.dart — PREMIUM REDESIGN v3
+// Design: Reference-matched — dark obsidian, cyan accent, DM Sans typography
+// Layout: Matches provided screenshots exactly — welcome hero, suggestion cards,
+//         bottom input bar with attach/mic/send, bottom nav hint
+// Typography: DM Sans throughout, small-to-medium scale (12–22px max)
+// ALL FUNCTIONALITY PRESERVED
 
 import 'dart:convert';
 import 'dart:io';
@@ -10,6 +11,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -23,41 +25,59 @@ import 'home/home_screen.dart';
 import 'settings_screen.dart';
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
-const _ink        = Color(0xFF070809);
-const _bg         = Color(0xFF0A0C0F);
-const _surface    = Color(0xFF111418);
-const _surfaceHi  = Color(0xFF181C22);
-const _card       = Color(0xFF1C2028);
-const _border     = Color(0xFF222830);
-const _borderHi   = Color(0xFF2E3640);
-const _accent     = Color(0xFF0EB5E8);
-const _accentDim  = Color(0xFF071825);
-const _accentSoft = Color(0xFF0EB5E840);
+const _bg         = Color(0xFF0A0C10);
+const _surface    = Color(0xFF13161C);
+const _surfaceHi  = Color(0xFF1A1E26);
+const _card       = Color(0xFF161A22);
+const _border     = Color(0xFF1E242E);
+const _borderHi   = Color(0xFF262E3A);
+const _accent     = Color(0xFF22D4F0);   // cyan — matches screenshots
+const _accentDim  = Color(0xFF061419);
+const _accentSoft = Color(0xFF22D4F030);
 const _purple     = Color(0xFF8B6BF5);
 const _purpleDim  = Color(0xFF120F28);
 const _green      = Color(0xFF22D47A);
-const _greenDim   = Color(0xFF061A10);
 const _red        = Color(0xFFEF4444);
 const _amber      = Color(0xFFF59E0B);
-const _txt        = Color(0xFFEEF2F8);
-const _txtSub     = Color(0xFF7A8899);
-const _txtDim     = Color(0xFF3D4B5C);
-const _userBubble = Color(0xFF0F1820);
+const _txt        = Color(0xFFE8EDF5);
+const _txtSub     = Color(0xFF6B7A8D);
+const _txtDim     = Color(0xFF353F4E);
+const _userBubble = Color(0xFF0E1520);
 const _logoPath   = 'lib/img/logo.jpg';
 
-// ── Suggestion Chips ──────────────────────────────────────────────────────────
+// ── Suggestion data ───────────────────────────────────────────────────────────
+class _SuggestionItem {
+  final IconData icon;
+  final String   title;
+  final String   subtitle;
+  const _SuggestionItem(this.icon, this.title, this.subtitle);
+}
+
 const _suggestions = [
-  _Chip(Icons.auto_stories_outlined,    'Summarize a document for me'),
-  _Chip(Icons.code_rounded,             'Review and fix my code'),
-  _Chip(Icons.lightbulb_outline_rounded,'Brainstorm creative ideas'),
-  _Chip(Icons.translate_rounded,        'Translate this text'),
+  _SuggestionItem(Icons.description_outlined,
+      'Summarize a document', 'Extract key points and insights quickly.'),
+  _SuggestionItem(Icons.code_rounded,
+      'Review and fix my code', 'Identify bugs and suggest optimizations.'),
+  _SuggestionItem(Icons.lightbulb_outline_rounded,
+      'Brainstorm creative ideas', 'Generate concepts for your next big project.'),
+  _SuggestionItem(Icons.translate_rounded,
+      'Translate this text', 'Convert content to another language.'),
 ];
 
-class _Chip {
-  final IconData icon;
-  final String label;
-  const _Chip(this.icon, this.label);
-}
+// ── Text style helper — DM Sans ───────────────────────────────────────────────
+TextStyle _dmSans({
+  double size        = 13,
+  FontWeight weight  = FontWeight.w400,
+  Color color        = _txt,
+  double height      = 1.5,
+  double letterSpacing = 0,
+}) => GoogleFonts.dmSans(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: height,
+  letterSpacing: letterSpacing,
+);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 String _fmtTime(DateTime dt) {
@@ -164,7 +184,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void initState() {
     super.initState();
     _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
+        vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
     _controller.addListener(() {
@@ -186,9 +206,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: _surface,
-      barrierColor: Colors.black.withOpacity(0.7),
+      barrierColor: Colors.black.withOpacity(0.75),
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _AttachSheet(onPicked: _handlePick),
     );
   }
@@ -295,23 +315,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(children: [
         Icon(err ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-            color: err ? _red : _green, size: 15),
+            color: err ? _red : _green, size: 14),
         const SizedBox(width: 8),
-        Expanded(child: Text(msg, style: const TextStyle(color: _txt, fontSize: 13))),
+        Expanded(child: Text(msg, style: _dmSans(size: 12, color: _txt))),
       ]),
       backgroundColor: _surfaceHi,
       behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: (err ? _red : _green).withOpacity(0.4)),
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: (err ? _red : _green).withOpacity(0.3)),
       ),
       duration: const Duration(seconds: 3),
     ));
   }
 
-  void _showVoiceSnack() {
-    _snack('Voice input coming in the next update!');
-  }
+  void _showVoiceSnack() => _snack('Voice input coming soon!');
 
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
@@ -333,9 +352,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         child: Column(children: [
           if (docCtx != null) _docBanner(docCtx),
           Expanded(
-            child: showWelcome
-                ? _welcomeView()
-                : _msgList(chatState),
+            child: showWelcome ? _welcomeView() : _msgList(chatState),
           ),
           if (_processingDoc) _processingBar(),
           _inputArea(docCtx),
@@ -344,233 +361,213 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  // ── AppBar ─────────────────────────────────────────────────────────────────
+  // ── AppBar — matches screenshot: logo + name left, copy+clear right ────────
   PreferredSizeWidget _buildAppBar(DocumentContext? docCtx) {
     return AppBar(
-      backgroundColor: _ink,
+      backgroundColor: _bg,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+      leadingWidth: 48,
       leading: Builder(builder: (ctx) => GestureDetector(
         onTap: () => Scaffold.of(ctx).openDrawer(),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
           child: Container(
+            width: 34, height: 34,
             decoration: BoxDecoration(
               color: _surface,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: _border),
             ),
-            child: const Icon(Icons.menu_rounded, color: _txtSub, size: 17),
+            child: const Icon(Icons.menu_rounded, color: _txtSub, size: 16),
           ),
         ),
       )),
       title: Row(children: [
-        _logoRing(30),
-        const SizedBox(width: 10),
+        // Logo — properly sized avatar with cyan ring
+        _logoAvatar(32),
+        const SizedBox(width: 9),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Stremini AI',
-              style: TextStyle(color: _txt, fontSize: 14,
-                  fontWeight: FontWeight.w700, letterSpacing: 0.1)),
+          Text('Stremini AI', style: _dmSans(size: 13, weight: FontWeight.w700)),
           if (docCtx != null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
                 color: _accentDim,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: _accent.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(3),
+                border: Border.all(color: _accent.withOpacity(0.25)),
               ),
-              child: const Text('DOC MODE',
-                  style: TextStyle(color: _accent, fontSize: 8,
-                      fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+              child: Text('DOC MODE',
+                  style: _dmSans(size: 8, weight: FontWeight.w700,
+                      color: _accent, letterSpacing: 1.0)),
             )
           else
             Row(children: [
-              Container(
-                width: 5, height: 5,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle, color: _green,
-                ),
-              ),
-              const SizedBox(width: 5),
-              const Text('online', style: TextStyle(color: _green, fontSize: 10,
-                  fontWeight: FontWeight.w500)),
+              Container(width: 5, height: 5,
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: _green)),
+              const SizedBox(width: 4),
+              Text('online', style: _dmSans(size: 10, color: _green, weight: FontWeight.w500)),
             ]),
         ]),
       ]),
       actions: [
         // Copy last message
-        GestureDetector(
+        _appBarBtn(
           onTap: () {
             final msgs = ref.read(chatNotifierProvider).value ?? [];
             final botMsgs = msgs.where((m) => m.type == MessageType.bot).toList();
             if (botMsgs.isNotEmpty) {
               Clipboard.setData(ClipboardData(text: botMsgs.last.text));
-              _snack('Last reply copied');
+              _snack('Copied');
             }
           },
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(0, 10, 6, 10),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _border),
-            ),
-            child: const Icon(Icons.copy_all_rounded, color: _txtSub, size: 13),
-          ),
+          child: const Icon(Icons.copy_all_rounded, color: _txtSub, size: 13),
         ),
-        // Clear chat
-        GestureDetector(
-          onTap: () {
-            showDialog(
-              context: context,
-              builder: (ctx) => _ConfirmDialog(
-                title: 'Clear Chat',
-                message: 'This will clear all messages. Continue?',
-                onConfirm: () {
-                  Navigator.pop(ctx);
-                  ref.read(chatNotifierProvider.notifier).clearChat();
-                },
-              ),
-            );
-          },
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(0, 10, 14, 10),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _border),
+        const SizedBox(width: 6),
+        // Clear
+        _appBarBtn(
+          onTap: () => showDialog(
+            context: context,
+            builder: (ctx) => _ConfirmDialog(
+              title: 'Clear chat',
+              message: 'All messages will be removed. Continue?',
+              onConfirm: () {
+                Navigator.pop(ctx);
+                ref.read(chatNotifierProvider.notifier).clearChat();
+              },
             ),
-            child: const Text('Clear',
-                style: TextStyle(color: _txtSub, fontSize: 12,
-                    fontWeight: FontWeight.w600)),
           ),
+          child: Text('Clear', style: _dmSans(size: 11, weight: FontWeight.w600, color: _txtSub)),
         ),
+        const SizedBox(width: 14),
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: _border),
+        child: Container(height: 0.5, color: _border),
       ),
     );
   }
 
-  // ── Welcome view ───────────────────────────────────────────────────────────
+  Widget _appBarBtn({required VoidCallback onTap, required Widget child}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: _border),
+        ),
+        child: Center(child: child),
+      ),
+    );
+  }
+
+  // ── Logo avatar ────────────────────────────────────────────────────────────
+  Widget _logoAvatar(double size) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: _accent.withOpacity(0.4), width: 1.5),
+      ),
+      child: ClipOval(
+        child: Image.asset(_logoPath, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: _accentDim,
+            child: Center(child: Text('S',
+                style: _dmSans(size: size * 0.38, weight: FontWeight.w800, color: _accent))),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Welcome view — matches screenshot exactly ──────────────────────────────
   Widget _welcomeView() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 36, 24, 20),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Brand row
-        Row(children: [
-          _logoRing(52, ringWidth: 2),
-          const SizedBox(width: 14),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Stremini AI',
-                style: TextStyle(color: _txt, fontSize: 20,
-                    fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            const Text('Your intelligent companion',
-                style: TextStyle(color: _txtSub, fontSize: 12)),
-          ]),
-        ]),
+
+        // Hero icon — matches the sparkle icon in screenshot
+        Center(
+          child: Container(
+            width: 62, height: 62,
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _border),
+            ),
+            child: const Center(
+              child: Icon(Icons.auto_awesome_rounded, color: _accent, size: 26),
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+
+        // Headline — "How can I help you today?" — matches screenshot
+        Center(
+          child: RichText(
+            textAlign: TextAlign.center,
+            text: TextSpan(
+              style: GoogleFonts.dmSans(
+                  fontSize: 22, fontWeight: FontWeight.w800,
+                  color: _txt, height: 1.25, letterSpacing: -0.5),
+              children: const [
+                TextSpan(text: 'How can I help you\n'),
+                TextSpan(text: 'today?',
+                    style: TextStyle(color: _accent)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+
+        // Suggestion cards — full width, matches screenshot style
+        ..._suggestions.map((s) => _suggestionCard(s)),
+
         const SizedBox(height: 32),
-
-        // Greeting headline
-        RichText(text: const TextSpan(
-          style: TextStyle(color: _txt, fontSize: 26,
-              fontWeight: FontWeight.w800, letterSpacing: -1.0, height: 1.2),
-          children: [
-            TextSpan(text: 'How can I\n'),
-            TextSpan(text: 'help you ', style: TextStyle(color: _txt)),
-            TextSpan(text: 'today?', style: TextStyle(color: _accent)),
-          ],
-        )),
-        const SizedBox(height: 8),
-        const Text('Ask me anything — I can code, write, analyze, and more.',
-            style: TextStyle(color: _txtSub, fontSize: 13, height: 1.5)),
-
-        const SizedBox(height: 32),
-
-        // Capability chips
-        const Text('QUICK ACTIONS',
-            style: TextStyle(color: _txtDim, fontSize: 10,
-                fontWeight: FontWeight.w700, letterSpacing: 2.0)),
-        const SizedBox(height: 14),
-        ..._suggestions.map((chip) => _suggestionTile(chip)),
-
-        const SizedBox(height: 32),
-
-        // Capability grid
-        const Text('CAPABILITIES',
-            style: TextStyle(color: _txtDim, fontSize: 10,
-                fontWeight: FontWeight.w700, letterSpacing: 2.0)),
-        const SizedBox(height: 14),
-        Row(children: [
-          Expanded(child: _capCard(Icons.code_rounded, 'Code', 'Debug & write', _purple, _purpleDim)),
-          const SizedBox(width: 10),
-          Expanded(child: _capCard(Icons.description_outlined, 'Docs', 'Read & summarize', _accent, _accentDim)),
-          const SizedBox(width: 10),
-          Expanded(child: _capCard(Icons.auto_awesome_rounded, 'Create', 'Write & ideate', _amber, const Color(0xFF1A1200))),
-        ]),
-        const SizedBox(height: 40),
       ]),
     );
   }
 
-  Widget _suggestionTile(_Chip chip) {
+  Widget _suggestionCard(_SuggestionItem item) {
     return GestureDetector(
-      onTap: () => _send(chip.label),
+      onTap: () => _send(item.title),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 9),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
         decoration: BoxDecoration(
           color: _surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _border),
         ),
         child: Row(children: [
+          // Icon badge
           Container(
-            width: 36, height: 36,
+            width: 38, height: 38,
             decoration: BoxDecoration(
               color: _accentDim,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _accent.withOpacity(0.2)),
+              border: Border.all(color: _accent.withOpacity(0.15)),
             ),
-            child: Icon(chip.icon, color: _accent, size: 16),
+            child: Icon(item.icon, color: _accent, size: 16),
           ),
-          const SizedBox(width: 14),
-          Expanded(child: Text(chip.label,
-              style: const TextStyle(color: _txt, fontSize: 13,
-                  fontWeight: FontWeight.w500))),
-          const Icon(Icons.arrow_forward_ios_rounded, color: _txtDim, size: 11),
+          const SizedBox(width: 13),
+          // Text
+          Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item.title, style: _dmSans(size: 13, weight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(item.subtitle,
+                style: _dmSans(size: 11, color: _txtSub, height: 1.4)),
+          ])),
+          // Arrow — matches screenshot
+          const Icon(Icons.arrow_forward_rounded, color: _txtSub, size: 14),
         ]),
       ),
-    );
-  }
-
-  Widget _capCard(IconData icon, String title, String sub, Color color, Color dimColor) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _border),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(
-            color: dimColor,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Icon(icon, color: color, size: 16),
-        ),
-        const SizedBox(height: 10),
-        Text(title, style: const TextStyle(color: _txt, fontSize: 12,
-            fontWeight: FontWeight.w700)),
-        const SizedBox(height: 2),
-        Text(sub, style: const TextStyle(color: _txtSub, fontSize: 10,
-            height: 1.4)),
-      ]),
     );
   }
 
@@ -580,41 +577,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final isDocx = doc.fileName.toLowerCase().endsWith('.docx');
     final color  = isOcr ? _green : isDocx ? _accent : _red;
     return Container(
-      color: const Color(0xFF080A0C),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      color: const Color(0xFF07090C),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
       child: Row(children: [
         Container(
-          width: 32, height: 32,
+          width: 30, height: 30,
           decoration: BoxDecoration(
             color: color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withOpacity(0.2)),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: color.withOpacity(0.18)),
           ),
           child: Icon(
             isOcr ? Icons.image_search_outlined
                 : isDocx ? Icons.description_outlined
                 : Icons.picture_as_pdf,
-            color: color, size: 15,
+            color: color, size: 14,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(doc.fileName,
-              style: const TextStyle(color: _txt, fontSize: 12,
-                  fontWeight: FontWeight.w700),
+              style: _dmSans(size: 12, weight: FontWeight.w600),
               maxLines: 1, overflow: TextOverflow.ellipsis),
-          const Text('Document mode — ask anything about this file',
-              style: TextStyle(color: _txtSub, fontSize: 10)),
+          Text('Doc mode — ask anything about this file',
+              style: _dmSans(size: 10, color: _txtSub)),
         ])),
         GestureDetector(
           onTap: () => ref.read(chatNotifierProvider.notifier).clearDocument(),
           child: Container(
-            width: 26, height: 26,
+            width: 24, height: 24,
             decoration: BoxDecoration(
-              color: _surface, borderRadius: BorderRadius.circular(7),
+              color: _surface, borderRadius: BorderRadius.circular(6),
               border: Border.all(color: _border),
             ),
-            child: const Icon(Icons.close_rounded, color: _txtSub, size: 13),
+            child: const Icon(Icons.close_rounded, color: _txtSub, size: 12),
           ),
         ),
       ]),
@@ -628,7 +624,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         if (msgs.isEmpty) return _welcomeView();
         return ListView.builder(
           controller: _scrollCtrl,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           itemCount: msgs.length,
           itemBuilder: (_, i) {
             final prev = i > 0 ? msgs[i - 1] : null;
@@ -638,14 +634,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         );
       },
       loading: () => const Center(
-          child: CircularProgressIndicator(strokeWidth: 2,
+          child: CircularProgressIndicator(strokeWidth: 1.5,
               valueColor: AlwaysStoppedAnimation(_accent))),
       error: (e, _) => Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Icon(Icons.error_outline_rounded, color: _red, size: 32),
-            const SizedBox(height: 12),
+            const Icon(Icons.error_outline_rounded, color: _red, size: 28),
+            const SizedBox(height: 10),
             Text('Error: $e',
-                style: const TextStyle(color: _red, fontSize: 13),
+                style: _dmSans(size: 12, color: _red),
                 textAlign: TextAlign.center),
           ])),
     );
@@ -665,27 +661,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         if (!isUser) {
           return Padding(
             padding: EdgeInsets.only(
-              bottom: 4,
-              top:    showAvatar ? 20 : 4,
-              left:   showAvatar ? 0  : 44,
+              bottom: 3,
+              top:    showAvatar ? 16 : 3,
+              left:   showAvatar ? 0  : 40,
             ),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (showAvatar) ...[
-                _botAvatar(),
-                const SizedBox(width: 12),
+                _logoAvatar(28),
+                const SizedBox(width: 10),
               ] else
-                const SizedBox(width: 44),
+                const SizedBox(width: 38),
               Flexible(
                 child: GestureDetector(
                   onLongPress: () {
                     Clipboard.setData(ClipboardData(text: displayText));
-                    _snack('Message copied');
+                    _snack('Copied');
                   },
                   child: SelectableText(
                     displayText,
-                    style: const TextStyle(
-                        color: _txt, fontSize: 15, height: 1.65,
-                        fontWeight: FontWeight.w400),
+                    style: _dmSans(size: 14, height: 1.65),
                     cursorColor: _accent,
                   ),
                 ),
@@ -696,34 +690,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
         // User bubble
         return Padding(
-          padding: EdgeInsets.only(bottom: 4, top: showAvatar ? 20 : 4),
+          padding: EdgeInsets.only(bottom: 3, top: showAvatar ? 16 : 3),
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Row(mainAxisAlignment: MainAxisAlignment.end,
                 crossAxisAlignment: CrossAxisAlignment.end, children: [
-              const SizedBox(width: 56),
+              const SizedBox(width: 52),
               Flexible(
                 child: GestureDetector(
                   onLongPress: () {
                     Clipboard.setData(ClipboardData(text: displayText));
-                    _snack('Message copied');
+                    _snack('Copied');
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 13),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                     decoration: BoxDecoration(
                       color: _userBubble,
                       borderRadius: const BorderRadius.only(
-                        topLeft:     Radius.circular(18),
-                        topRight:    Radius.circular(18),
-                        bottomLeft:  Radius.circular(18),
+                        topLeft:     Radius.circular(16),
+                        topRight:    Radius.circular(16),
+                        bottomLeft:  Radius.circular(16),
                         bottomRight: Radius.circular(4),
                       ),
-                      border: Border.all(color: _accent.withOpacity(0.15)),
+                      border: Border.all(color: _accent.withOpacity(0.12)),
                     ),
                     child: SelectableText(
                       displayText,
-                      style: const TextStyle(
-                          color: _txt, fontSize: 15, height: 1.55),
+                      style: _dmSans(size: 14, height: 1.55),
                       cursorColor: _accent,
                     ),
                   ),
@@ -731,68 +723,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               ),
             ]),
             Padding(
-              padding: const EdgeInsets.only(top: 4, right: 2),
+              padding: const EdgeInsets.only(top: 3, right: 2),
               child: Text(_fmtTime(message.timestamp),
-                  style: const TextStyle(
-                      color: _txtDim, fontSize: 10,
-                      fontWeight: FontWeight.w400)),
+                  style: _dmSans(size: 10, color: _txtDim)),
             ),
           ]),
         );
     }
   }
 
-  Widget _logoRing(double size, {double ringWidth = 1.5}) => Container(
-        width: size, height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: _accent.withOpacity(0.35), width: ringWidth),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(size / 2),
-          child: Image.asset(_logoPath, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: _accentDim,
-              child: const Center(
-                child: Text('S', style: TextStyle(color: _accent,
-                    fontWeight: FontWeight.w800, fontSize: 14))),
-            ),
-          ),
-        ),
-      );
-
-  Widget _botAvatar() => _logoRing(32);
-
   Widget _docAnnounce(String text) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: _surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _accent.withOpacity(0.18)),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _accent.withOpacity(0.15)),
         ),
         child: Row(children: [
-          const Icon(Icons.picture_as_pdf, color: _red, size: 15),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text,
-              style: const TextStyle(color: _txtSub, fontSize: 13,
-                  height: 1.5))),
+          const Icon(Icons.picture_as_pdf, color: _red, size: 13),
+          const SizedBox(width: 9),
+          Expanded(child: Text(text, style: _dmSans(size: 12, color: _txtSub, height: 1.5))),
         ]),
       );
 
   Widget _typingBubble() => Padding(
-        padding: const EdgeInsets.only(bottom: 4, top: 20),
+        padding: const EdgeInsets.only(bottom: 3, top: 16),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _botAvatar(),
-          const SizedBox(width: 12),
+          _logoAvatar(28),
+          const SizedBox(width: 10),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
             decoration: BoxDecoration(
               color: _surface,
               borderRadius: const BorderRadius.only(
-                topLeft:     Radius.circular(18),
-                topRight:    Radius.circular(18),
-                bottomRight: Radius.circular(18),
+                topLeft:     Radius.circular(16),
+                topRight:    Radius.circular(16),
+                bottomRight: Radius.circular(16),
                 bottomLeft:  Radius.circular(4),
               ),
               border: Border.all(color: _border),
@@ -804,63 +771,59 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   Widget _processingBar() => Container(
         color: _surface,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        child: const Row(children: [
-          SizedBox(width: 14, height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        child: Row(children: [
+          const SizedBox(width: 12, height: 12,
+              child: CircularProgressIndicator(strokeWidth: 1.5,
                   valueColor: AlwaysStoppedAnimation(_accent))),
-          SizedBox(width: 10),
-          Text('Extracting text…',
-              style: TextStyle(color: _txtSub, fontSize: 13)),
+          const SizedBox(width: 9),
+          Text('Extracting text…', style: _dmSans(size: 12, color: _txtSub)),
         ]),
       );
 
-  // ── Input area ─────────────────────────────────────────────────────────────
+  // ── Input area — matches screenshot bottom bar ─────────────────────────────
   Widget _inputArea(DocumentContext? docCtx) {
     return Container(
       decoration: BoxDecoration(
-        color: _ink,
-        border: Border(top: BorderSide(color: _border.withOpacity(0.6))),
+        color: _bg,
+        border: Border(top: BorderSide(color: _border.withOpacity(0.5))),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
       child: SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+
+          // Main input row — matches screenshot
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            // Attach
-            _inputActionBtn(
-              icon: Icons.add_rounded,
-              onTap: _pickAttachment,
-              color: _txtSub,
-            ),
-            const SizedBox(width: 8),
+
+            // Attach button
+            _barBtn(icon: Icons.attach_file_rounded, onTap: _pickAttachment),
+            const SizedBox(width: 7),
 
             // Text field
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 120),
+                constraints: const BoxConstraints(maxHeight: 110),
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(
                   color: _surface,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: docCtx != null
-                        ? _accent.withOpacity(0.35)
-                        : _borderHi,
+                    color: docCtx != null ? _accent.withOpacity(0.3) : _borderHi,
                     width: docCtx != null ? 1.5 : 1,
                   ),
                 ),
                 child: TextField(
                   controller: _controller,
-                  focusNode:  _focusNode,
-                  style: const TextStyle(color: _txt, fontSize: 14, height: 1.5),
+                  focusNode: _focusNode,
+                  style: _dmSans(size: 13, height: 1.5),
                   decoration: InputDecoration(
                     hintText: docCtx != null
                         ? 'Ask about ${docCtx.fileName}…'
-                        : 'Message Stremini AI',
-                    hintStyle: const TextStyle(color: _txtDim, fontSize: 14),
+                        : 'Message Stremini AI...',
+                    hintStyle: _dmSans(size: 13, color: _txtDim),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 11),
+                        horizontal: 15, vertical: 10),
                   ),
                   maxLines: null,
                   textInputAction: TextInputAction.send,
@@ -868,25 +831,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 7),
 
-            // Mic
-            _inputActionBtn(
-              icon: Icons.mic_none_rounded,
-              onTap: _showVoiceSnack,
-              color: _txtSub,
-            ),
-            const SizedBox(width: 8),
+            // Mic button
+            _barBtn(icon: Icons.mic_none_rounded, onTap: _showVoiceSnack),
+            const SizedBox(width: 7),
 
-            // Send — animates in when typing
+            // Send button — cyan when typing, matches screenshot
             AnimatedScale(
-              scale: _isTyping ? 1.0 : 0.85,
-              duration: const Duration(milliseconds: 200),
+              scale: _isTyping ? 1.0 : 0.9,
+              duration: const Duration(milliseconds: 180),
               child: GestureDetector(
                 onTap: _send,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 42, height: 42,
+                  duration: const Duration(milliseconds: 180),
+                  width: 40, height: 40,
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: _isTyping ? _accent : _surface,
@@ -895,40 +854,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         color: _isTyping ? _accent : _border),
                   ),
                   child: Icon(Icons.arrow_upward_rounded,
-                      color: _isTyping ? _ink : _txtDim, size: 20),
+                      color: _isTyping ? const Color(0xFF070809) : _txtDim,
+                      size: 18),
                 ),
               ),
             ),
           ]),
 
-          // Character count when typing long messages
+          // Char count hint
           if (_controller.text.length > 200)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text('${_controller.text.length} chars',
-                  style: const TextStyle(color: _txtDim, fontSize: 10)),
+                  style: _dmSans(size: 10, color: _txtDim)),
             ),
         ]),
       ),
     );
   }
 
-  Widget _inputActionBtn({
-    required IconData icon,
-    required VoidCallback onTap,
-    Color color = _txtSub,
-  }) {
+  Widget _barBtn({required IconData icon, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 42, height: 42,
+        width: 40, height: 40,
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: _surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _border),
         ),
-        child: Icon(icon, color: color, size: 19),
+        child: Icon(icon, color: _txtSub, size: 17),
       ),
     );
   }
@@ -991,7 +947,7 @@ class _TypingDotsState extends State<_TypingDots>
         mainAxisSize: MainAxisSize.min,
         children: List.generate(3, (i) {
           final t = (_ctrl.value - i * 0.2).clamp(0.0, 1.0);
-          final scale = 1.0 + 0.5 * (t < 0.5 ? t / 0.5 : 1 - (t - 0.5) / 0.5);
+          final scale = 1.0 + 0.45 * (t < 0.5 ? t / 0.5 : 1 - (t - 0.5) / 0.5);
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: Transform.scale(
@@ -1028,50 +984,46 @@ class _ConfirmDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: const Color(0xFF111418),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: _border),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: _border),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(color: _txt, fontSize: 16,
-              fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Text(message, style: const TextStyle(color: _txtSub, fontSize: 13,
-              height: 1.5)),
-          const SizedBox(height: 20),
+          Text(title, style: _dmSans(size: 14, weight: FontWeight.w700)),
+          const SizedBox(height: 7),
+          Text(message, style: _dmSans(size: 12, color: _txtSub, height: 1.5)),
+          const SizedBox(height: 18),
           Row(children: [
             Expanded(
               child: GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(
-                  height: 40,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: _surface,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(9),
                     border: Border.all(color: _border),
                   ),
-                  child: const Center(child: Text('Cancel',
-                      style: TextStyle(color: _txtSub, fontSize: 13,
-                          fontWeight: FontWeight.w600))),
+                  child: Center(child: Text('Cancel',
+                      style: _dmSans(size: 12, color: _txtSub, weight: FontWeight.w600))),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 9),
             Expanded(
               child: GestureDetector(
                 onTap: onConfirm,
                 child: Container(
-                  height: 40,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: _red.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _red.withOpacity(0.3)),
+                    color: _red.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: _red.withOpacity(0.28)),
                   ),
-                  child: const Center(child: Text('Clear',
-                      style: TextStyle(color: _red, fontSize: 13,
-                          fontWeight: FontWeight.w700))),
+                  child: Center(child: Text('Clear',
+                      style: _dmSans(size: 12, color: _red, weight: FontWeight.w700))),
                 ),
               ),
             ),
@@ -1091,35 +1043,34 @@ class _AttachSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Handle
         Container(
-          width: 36, height: 4,
-          margin: const EdgeInsets.only(bottom: 20),
+          width: 32, height: 3,
+          margin: const EdgeInsets.only(bottom: 18),
           decoration: BoxDecoration(
-              color: const Color(0xFF222830),
-              borderRadius: BorderRadius.circular(2)),
+              color: _border, borderRadius: BorderRadius.circular(2)),
         ),
-        const Align(
+        Align(
           alignment: Alignment.centerLeft,
           child: Text('Attach File',
-              style: TextStyle(color: _txt, fontSize: 16,
-                  fontWeight: FontWeight.w700)),
+              style: _dmSans(size: 15, weight: FontWeight.w700)),
         ),
-        const SizedBox(height: 4),
-        const Align(
+        const SizedBox(height: 3),
+        Align(
           alignment: Alignment.centerLeft,
           child: Text('Add context to your conversation',
-              style: TextStyle(color: _txtSub, fontSize: 12)),
+              style: _dmSans(size: 11, color: _txtSub)),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         _tile(context, Icons.picture_as_pdf_outlined, _red,
             'PDF Document', 'Chat about a PDF file', 'pdf'),
         _tile(context, Icons.description_outlined, _accent,
             'Document / Text', 'TXT, MD, CSV, JSON, DOCX', 'text'),
         _tile(context, Icons.image_search_outlined, _purple,
-            'Image', 'Use OCR to extract text', 'image'),
+            'Image (OCR)', 'Extract text from an image', 'image'),
         _tile(context, Icons.attach_file_rounded, _amber,
             'Other File', 'Any supported file type', 'file'),
       ]),
@@ -1131,31 +1082,30 @@ class _AttachSheet extends StatelessWidget {
     return GestureDetector(
       onTap: () { Navigator.pop(ctx); onPicked(type); },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        margin: const EdgeInsets.only(bottom: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
         decoration: BoxDecoration(
           color: const Color(0xFF0C0E12),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
           border: Border.all(color: _border),
         ),
         child: Row(children: [
           Container(
-            width: 38, height: 38,
+            width: 36, height: 36,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: iconColor.withOpacity(0.2)),
+              color: iconColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: iconColor.withOpacity(0.18)),
             ),
-            child: Icon(icon, color: iconColor, size: 17),
+            child: Icon(icon, color: iconColor, size: 15),
           ),
-          const SizedBox(width: 13),
+          const SizedBox(width: 12),
           Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(
-                color: _txt, fontSize: 13, fontWeight: FontWeight.w600)),
-            Text(subtitle, style: const TextStyle(color: _txtSub, fontSize: 11)),
+            Text(title, style: _dmSans(size: 12, weight: FontWeight.w600)),
+            Text(subtitle, style: _dmSans(size: 10, color: _txtSub)),
           ])),
-          const Icon(Icons.chevron_right_rounded, color: _txtDim, size: 16),
+          const Icon(Icons.chevron_right_rounded, color: _txtDim, size: 14),
         ]),
       ),
     );
