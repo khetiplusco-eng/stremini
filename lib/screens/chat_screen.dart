@@ -385,22 +385,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       ),
       title: Row(children: [
         // Logo — circular avatar like in screenshot
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: _accent.withOpacity(0.3), width: 1.5),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(_logoPath, width: 32, height: 32, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  color: _accent,
-                  child: const Icon(Icons.auto_awesome, color: Colors.white, size: 16),
-                )),
-          ),
-        ),
+        _logoAvatar(32, borderOpacity: 0.3),
         const SizedBox(width: 10),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Stremini AI',
@@ -470,22 +455,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         children: [
           // Bot avatar + name row
           Row(children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: _accent.withOpacity(0.25), width: 1.5),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Image.asset(_logoPath, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: _accent,
-                      child: const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
-                    )),
-              ),
-            ),
+            _logoAvatar(48),
             const SizedBox(width: 12),
             const Text('Stremini AI',
                 style: TextStyle(color: _txtPri, fontSize: 18,
@@ -720,22 +690,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
-  Widget _botAvatar() => Container(
-        width: 32,
-        height: 32,
+  Widget _logoAvatar(double size, {double borderOpacity = 0.25, double borderWidth = 1.5}) => Container(
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: _accent.withOpacity(0.25), width: 1.5),
+          border: Border.all(color: _accent.withOpacity(borderOpacity), width: borderWidth),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Image.asset(_logoPath, width: 32, height: 32, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: _accent,
-                child: const Icon(Icons.auto_awesome, color: Colors.white, size: 14),
-              )),
+          borderRadius: BorderRadius.circular(size / 2),
+          child: Image.asset(
+            _logoPath,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: _surfaceHi,
+              alignment: Alignment.center,
+              child: const Text('S', style: TextStyle(color: _txtPri, fontWeight: FontWeight.w700)),
+            ),
+          ),
         ),
       );
+
+  Widget _botAvatar() => _logoAvatar(32);
 
   Widget _docAnnounce(String text) => Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
