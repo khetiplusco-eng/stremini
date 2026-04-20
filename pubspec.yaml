@@ -43,3 +43,16 @@ flutter:
     - lib/img/home_icon.png
     - lib/img/question_mark_icon.png
     - lib/img/settings_icon.png
+
+  fonts:
+    - family: DMSans
+      fonts:
+        - asset: fonts/DMSans-Regular.ttf
+        - asset: fonts/DMSans-Medium.ttf
+          weight: 500
+        - asset: fonts/DMSans-SemiBold.ttf
+          weight: 600
+        - asset: fonts/DMSans-Bold.ttf
+          weight: 700
+        - asset: fonts/DMSans-ExtraBold.ttf
+          weight: 800

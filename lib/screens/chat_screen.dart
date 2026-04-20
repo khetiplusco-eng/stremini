@@ -41,7 +41,7 @@ const _txt          = Color(0xFFFFFFFF);
 const _txtSecondary = Color(0xFF8E8E93);
 const _txtTertiary  = Color(0xFF48484A);
 const _userBubble   = Color(0xFF0A84FF);
-const _logoPath     = 'lib/img/logo.png';
+const _logoPath     = 'lib/img/logo.jpg';
 
 // ── Suggestion data ───────────────────────────────────────────────────────────
 class _SuggestionItem {
