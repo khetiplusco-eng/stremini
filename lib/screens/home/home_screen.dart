@@ -416,7 +416,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Text(sublabel, style: _sf(size: 12, color: _txtSecondary)),
         ])),
         if (isEnabled)
-          const Icon(Icons.checkmark_circle_fill, color: _green, size: 22)
+          const Icon(Icons.check_circle, color: _green, size: 22)
         else
           GestureDetector(
             onTap: () { HapticFeedback.selectionClick(); onTap(); },
@@ -448,14 +448,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Column(children: [
       Row(children: [
         Expanded(child: _moduleCard(
-          icon: Icons.shield_fill, iconBg: _greenSoft, iconColor: _green,
+          icon: Icons.shield, iconBg: _greenSoft, iconColor: _green,
           label: 'Scam Shield', sublabel: 'Real-time protection',
           statusLabel: 'Active', statusColor: _green,
           onTap: _handleScamDetectionTap,
         )),
         const SizedBox(width: 12),
         Expanded(child: _moduleCard(
-          icon: Icons.calendar_fill, iconBg: _purpleSoft, iconColor: _purple,
+          icon: Icons.calendar_month, iconBg: _purpleSoft, iconColor: _purple,
           label: 'Scheduler', sublabel: 'AI task planning',
           statusLabel: 'Open', statusColor: _purple,
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SmartSchedulerScreen())),
@@ -464,7 +464,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       const SizedBox(height: 12),
       Row(children: [
         Expanded(child: _moduleCard(
-          icon: Icons.chevron_left_right, iconBg: _amberSoft, iconColor: _amber,
+          icon: Icons.compare_arrows, iconBg: _amberSoft, iconColor: _amber,
           label: 'GitHub Agent', sublabel: 'Autonomous code ops',
           statusLabel: 'Ready', statusColor: _amber,
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())),
@@ -511,7 +511,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 color: _accentSoft,
                 borderRadius: BorderRadius.circular(11),
               ),
-              child: const Icon(Icons.chat_bubble_fill, color: _accent, size: 19),
+              child: const Icon(Icons.chat_bubble, color: _accent, size: 19),
             ),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -627,17 +627,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget _buildDrawer(BuildContext context, String Function(String) tr) {
     void close() => Scaffold.maybeOf(context)?.closeDrawer();
     return AppDrawer(items: [
-      AppDrawerItem(icon: Icons.house_fill, title: 'Home', onTap: close),
+      AppDrawerItem(icon: Icons.home, title: 'Home', onTap: close),
       AppDrawerItem(
-        icon: Icons.calendar_fill, title: 'Smart Scheduler',
+        icon: Icons.calendar_month, title: 'Smart Scheduler',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const SmartSchedulerScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.chevron_left_right, title: 'Stremini Agent',
+        icon: Icons.compare_arrows, title: 'Stremini Agent',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.chat_bubble_fill, title: 'Quick Chat',
+        icon: Icons.chat_bubble, title: 'Quick Chat',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())); },
       ),
       AppDrawerItem(
@@ -650,15 +650,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         },
       ),
       AppDrawerItem(
-        icon: Icons.gear_6_teeth_fill, title: tr('settings'),
+        icon: Icons.settings, title: tr('settings'),
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.envelope_fill, title: 'Contact Us',
+        icon: Icons.email, title: 'Contact Us',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactUsScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.arrow_right_on_rectangle, title: 'Sign Out',
+        icon: Icons.logout, title: 'Sign Out',
         onTap: () { close(); ref.read(authProvider.notifier).signOut(); },
       ),
     ]);
