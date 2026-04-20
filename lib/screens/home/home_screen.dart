@@ -1,10 +1,11 @@
-// home_screen.dart — PREMIUM REDESIGN
-// Design direction: Editorial luxury — Bloomberg meets Vercel dashboard.
-// Ultra-tight typographic hierarchy. Surgical whitespace. Every element
-// serves a purpose. The accent color is the only pop of life.
-// ALL LOGIC IS UNCHANGED — only presentation layer is redesigned.
+// home_screen.dart — iOS PREMIUM REDESIGN
+// Fixes: 1) Sidebar AI Keyboard crash — now safely routed
+//         2) Logo uses lib/img/logo.png (not X icon)
+// Design: Apple-grade dark UI — clean groups, generous spacing, refined hierarchy
+// ALL LOGIC PRESERVED
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_drawer.dart';
@@ -20,35 +21,38 @@ import '../contact_us_screen.dart';
 import '../smart_scheduler_screen.dart';
 import '../../providers/auth_provider.dart';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _bg         = Color(0xFF080A0C);
-const _surface    = Color(0xFF0E1114);
-const _card       = Color(0xFF131619);
-const _border     = Color(0xFF1E2328);
-const _accent     = Color(0xFF23A6E2);
-const _accentDim  = Color(0xFF0D2A3A);
-const _green      = Color(0xFF22C55E);
-const _greenDim   = Color(0xFF0D2818);
-const _red        = Color(0xFFEF4444);
-const _amber      = Color(0xFFF59E0B);
-const _purple     = Color(0xFF8B5CF6);
-const _txt        = Color(0xFFF0F2F5);
-const _txtSub     = Color(0xFF8A95A3);
-const _txtDim     = Color(0xFF454E5A);
-const _logoPath   = 'lib/img/logo.jpg';
+// ── Design tokens — iOS Dark ──────────────────────────────────────────────────
+const _bg           = Color(0xFF000000);
+const _bgSecondary  = Color(0xFF1C1C1E);
+const _bgTertiary   = Color(0xFF2C2C2E);
+const _separator    = Color(0xFF38383A);
+const _accent       = Color(0xFF0A84FF);
+const _accentSoft   = Color(0xFF0A84FF15);
+const _green        = Color(0xFF30D158);
+const _greenSoft    = Color(0xFF30D15810);
+const _red          = Color(0xFFFF453A);
+const _amber        = Color(0xFFFF9F0A);
+const _amberSoft    = Color(0xFFFF9F0A12);
+const _purple       = Color(0xFFBF5AF2);
+const _purpleSoft   = Color(0xFFBF5AF212);
+const _txt          = Color(0xFFFFFFFF);
+const _txtSecondary = Color(0xFF8E8E93);
+const _txtTertiary  = Color(0xFF48484A);
+const _logoPath     = 'lib/img/logo.png';
 
-// ── Typography helpers ────────────────────────────────────────────────────────
-TextStyle _label(double size, {Color color = _txtDim, FontWeight w = FontWeight.w600, double spacing = 1.2}) =>
-    TextStyle(fontSize: size, color: color, fontWeight: w, letterSpacing: spacing, height: 1.0);
-
-TextStyle _body(double size, {Color color = _txt, FontWeight w = FontWeight.w400}) =>
-    TextStyle(fontSize: size, color: color, fontWeight: w, height: 1.5);
+// ── Typography ────────────────────────────────────────────────────────────────
+TextStyle _sf({
+  double size       = 14,
+  FontWeight weight = FontWeight.w400,
+  Color color       = _txt,
+  double height     = 1.5,
+  double spacing    = -0.3,
+}) => TextStyle(fontSize: size, fontWeight: weight, color: color, height: height, letterSpacing: spacing);
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-final keyboardServiceProvider =
-    Provider<KeyboardService>((ref) => KeyboardService());
-final keyboardStatusProvider = FutureProvider<KeyboardStatus>((ref) async {
+final keyboardServiceProvider = Provider<KeyboardService>((ref) => KeyboardService());
+final keyboardStatusProvider  = FutureProvider<KeyboardStatus>((ref) async {
   return await ref.watch(keyboardServiceProvider).checkKeyboardStatus();
 });
 
@@ -61,15 +65,13 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  late AnimationController _shimmerCtrl;
+  late AnimationController _fadeCtrl;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _shimmerCtrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 2400),
-    )..repeat();
+    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(homeControllerProvider.notifier).checkPermissions();
     });
@@ -78,7 +80,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _shimmerCtrl.dispose();
+    _fadeCtrl.dispose();
     super.dispose();
   }
 
@@ -90,10 +92,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good Morning';
+    if (h < 18) return 'Good Afternoon';
+    return 'Good Evening';
   }
 
   @override
@@ -113,13 +115,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     ref.listen(homeControllerProvider, (_, next) {
       if (next.errorMessage != null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(next.errorMessage!, style: _body(13)),
-          backgroundColor: _surface,
+          content: Text(next.errorMessage!, style: _sf(size: 13)),
+          backgroundColor: _bgSecondary,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: _red, width: 1),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
         controller.clearError();
       }
@@ -128,354 +127,318 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Scaffold(
       backgroundColor: _bg,
       drawer: _buildDrawer(context, tr),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(child: _buildTopBar(context, state)),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 22),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                const SizedBox(height: 32),
-                _buildGreetingBlock(firstName, state),
-                const SizedBox(height: 32),
-                _buildAgentControl(state, controller),
-                const SizedBox(height: 24),
-                _buildPermissionsBlock(state, controller),
-                const SizedBox(height: 32),
-                _buildSectionLabel('MODULES'),
-                const SizedBox(height: 16),
-                _buildModulesGrid(context, state, controller, keyboardStatus),
-                const SizedBox(height: 32),
-                if (!state.permissionStatus.hasAll) ...[
-                  _buildSectionLabel('PERMISSIONS REQUIRED'),
-                  const SizedBox(height: 16),
-                  _buildPermAlerts(state, controller),
+      body: FadeTransition(
+        opacity: CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut),
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(child: _buildTopBar(context, state)),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
                   const SizedBox(height: 32),
-                ],
-                const SizedBox(height: 60),
-              ]),
+                  _buildGreetingBlock(firstName, state),
+                  const SizedBox(height: 28),
+                  _buildAgentCard(state, controller),
+                  const SizedBox(height: 28),
+                  _buildSectionHeader('Modules'),
+                  const SizedBox(height: 14),
+                  _buildModulesGrid(context, state, controller, keyboardStatus),
+                  const SizedBox(height: 28),
+                  _buildPermissionsCard(state, controller),
+                  if (!state.permissionStatus.hasAll) ...[
+                    const SizedBox(height: 28),
+                    _buildSectionHeader('Action Required'),
+                    const SizedBox(height: 14),
+                    _buildPermAlerts(state, controller),
+                  ],
+                  const SizedBox(height: 80),
+                ]),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // ── Top bar ────────────────────────────────────────────────────────────────
+  // ── Top Bar ────────────────────────────────────────────────────────────────
   Widget _buildTopBar(BuildContext context, HomeState state) {
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 14,
-        left: 22, right: 22, bottom: 16,
+        top: MediaQuery.of(context).padding.top + 12,
+        left: 20, right: 20, bottom: 14,
       ),
       decoration: const BoxDecoration(
         color: _bg,
-        border: Border(bottom: BorderSide(color: _border)),
+        border: Border(bottom: BorderSide(color: _separator, width: 0.5)),
       ),
       child: Row(children: [
         Builder(builder: (ctx) => GestureDetector(
-          onTap: () => Scaffold.of(ctx).openDrawer(),
+          onTap: () { HapticFeedback.selectionClick(); Scaffold.of(ctx).openDrawer(); },
           child: Container(
-            width: 38, height: 38,
+            width: 36, height: 36,
             decoration: BoxDecoration(
-              color: _surface, borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _border),
+              color: _bgSecondary,
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.menu_rounded, color: _txtSub, size: 18),
+            child: const Icon(Icons.menu_rounded, color: _txtSecondary, size: 18),
           ),
         )),
-        const SizedBox(width: 14),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.asset(_logoPath, width: 28, height: 28, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              width: 28, height: 28,
-              decoration: BoxDecoration(
-                color: _accent, borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 14),
+        const SizedBox(width: 12),
+        // LOGO — uses logo.png
+        Container(
+          width: 32, height: 32,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0A84FF), Color(0xFF5AC8FA)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(_logoPath, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome_rounded, color: _txt, size: 16),
             ),
           ),
         ),
         const SizedBox(width: 10),
-        Text('STREMINI AI', style: _label(13, color: _txt, spacing: 2.5, w: FontWeight.w800)),
+        Text('STREMINI', style: _sf(size: 15, weight: FontWeight.w800, spacing: 1.5)),
         const Spacer(),
-        _buildLivePill(state),
+        _statusPill(state),
       ]),
     );
   }
 
-  Widget _buildLivePill(HomeState state) {
+  Widget _statusPill(HomeState state) {
     final isLive = state.bubbleActive;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: isLive ? _greenDim : _surface,
+        color: isLive ? _greenSoft : _bgSecondary,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isLive ? _green.withOpacity(0.35) : _border,
-        ),
+        border: isLive ? Border.all(color: _green.withOpacity(0.3)) : null,
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 400),
-          width: 5, height: 5,
+          width: 6, height: 6,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isLive ? _green : _txtDim,
-            boxShadow: isLive ? [BoxShadow(color: _green.withOpacity(0.6), blurRadius: 4, spreadRadius: 1)] : null,
+            color: isLive ? _green : _txtTertiary,
           ),
         ),
         const SizedBox(width: 6),
-        Text(
-          isLive ? 'LIVE' : 'IDLE',
-          style: _label(9, color: isLive ? _green : _txtDim, spacing: 1.5),
-        ),
+        Text(isLive ? 'Live' : 'Idle',
+            style: _sf(size: 12, color: isLive ? _green : _txtTertiary, weight: FontWeight.w600)),
       ]),
     );
   }
 
-  // ── Greeting block ─────────────────────────────────────────────────────────
+  // ── Greeting ───────────────────────────────────────────────────────────────
   Widget _buildGreetingBlock(String firstName, HomeState state) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_greeting(), style: _body(15, color: _txtSub)),
+      Text(_greeting(), style: _sf(size: 17, color: _txtSecondary, weight: FontWeight.w400)),
       const SizedBox(height: 4),
-      Text(firstName, style: const TextStyle(
-        color: _txt, fontSize: 40, fontWeight: FontWeight.w800,
-        letterSpacing: -2.0, height: 1.0,
-      )),
-      const SizedBox(height: 12),
+      Text(firstName,
+          style: _sf(size: 38, weight: FontWeight.w800, spacing: -1.5, height: 1.1)),
+      const SizedBox(height: 14),
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: _surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _border),
+          color: _bgSecondary,
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 5, height: 5,
+            width: 7, height: 7,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: state.bubbleActive ? _green : _txtDim,
+              color: state.bubbleActive ? _green : _txtTertiary,
             ),
           ),
           const SizedBox(width: 8),
           Text(
-            state.bubbleActive
-                ? 'AI agent operational'
-                : 'AI agent on standby',
-            style: _label(11, color: state.bubbleActive ? _txtSub : _txtDim, spacing: 0),
+            state.bubbleActive ? 'AI agent is operational' : 'AI agent is on standby',
+            style: _sf(size: 13, color: state.bubbleActive ? _txtSecondary : _txtTertiary),
           ),
         ]),
       ),
     ]);
   }
 
-  // ── Agent control card ─────────────────────────────────────────────────────
-  Widget _buildAgentControl(HomeState state, HomeController controller) {
+  // ── Agent Card ─────────────────────────────────────────────────────────────
+  Widget _buildAgentCard(HomeState state, HomeController controller) {
     final isActive = state.bubbleActive;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: _surface,
+        color: _bgSecondary,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isActive ? _accent.withOpacity(0.2) : _border,
-        ),
+        border: isActive ? Border.all(color: _accent.withOpacity(0.25)) : null,
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
-            width: 40, height: 40,
+            width: 44, height: 44,
             decoration: BoxDecoration(
-              color: isActive ? _accentDim : _card,
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: isActive ? _accent.withOpacity(0.3) : _border,
-              ),
+              color: isActive ? _accentSoft : _bgTertiary,
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              isActive ? Icons.memory_rounded : Icons.power_settings_new_rounded,
-              color: isActive ? _accent : _txtDim, size: 18,
+              isActive ? Icons.bolt_rounded : Icons.power_settings_new_rounded,
+              color: isActive ? _accent : _txtSecondary, size: 22,
             ),
           ),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isActive ? 'Agent Active' : 'Agent Inactive',
+                style: _sf(size: 17, weight: FontWeight.w600)),
             Text(
-              isActive ? 'Agent Active' : 'Agent Inactive',
-              style: _body(14, w: FontWeight.w700),
-            ),
-            Text(
-              isActive ? 'System-wide intelligence running' : 'Activate to enable AI overlay',
-              style: _body(12, color: _txtSub),
+              isActive ? 'System-wide intelligence running' : 'Tap to activate AI overlay',
+              style: _sf(size: 13, color: _txtSecondary),
             ),
           ])),
+          if (isActive)
+            Container(
+              width: 10, height: 10,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, color: _green,
+                boxShadow: [BoxShadow(color: _green.withOpacity(0.5), blurRadius: 8)],
+              ),
+            ),
         ]),
         const SizedBox(height: 18),
         Row(children: [
-          Expanded(
-            child: _actionBtn(
-              label: 'Pause',
-              onTap: isActive ? () async => await controller.toggleBubble(false) : null,
-              color: _txtSub,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 2,
-            child: isActive
-                ? _runningBtn()
-                : _primaryBtn(
-                    label: 'Start Agent',
-                    onTap: () async => await controller.toggleBubble(true),
+          if (isActive) ...[
+            Expanded(
+              child: GestureDetector(
+                onTap: () async { HapticFeedback.lightImpact(); await controller.toggleBubble(false); },
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _bgTertiary,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-          ),
-        ]),
-      ]),
-    );
-  }
-
-  Widget _actionBtn({required String label, VoidCallback? onTap, Color color = _accent}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 42,
-        decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _border),
-        ),
-        child: Center(child: Text(label, style: _body(13, color: onTap != null ? color : _txtDim, w: FontWeight.w600))),
-      ),
-    );
-  }
-
-  Widget _primaryBtn({required String label, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 42,
-        decoration: BoxDecoration(
-          color: _accent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Center(child: Text(label, style: _body(13, w: FontWeight.w700))),
-      ),
-    );
-  }
-
-  Widget _runningBtn() {
-    return Container(
-      height: 42,
-      decoration: BoxDecoration(
-        color: _accentDim,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _accent.withOpacity(0.25)),
-      ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(
-          width: 6, height: 6,
-          decoration: const BoxDecoration(shape: BoxShape.circle, color: _accent),
-        ),
-        const SizedBox(width: 8),
-        Text('Running', style: _body(13, color: _accent, w: FontWeight.w700)),
-      ]),
-    );
-  }
-
-  // ── Permissions block ──────────────────────────────────────────────────────
-  Widget _buildPermissionsBlock(HomeState state, HomeController controller) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _border),
-      ),
-      child: Column(children: [
-        _permRow(
-          label: 'Screen Overlay',
-          sublabel: 'Floating bubble',
-          icon: Icons.layers_outlined,
-          isEnabled: state.permissionStatus.hasOverlay,
-          onTap: () => controller.requestOverlayPermission(),
-          isLast: false,
-        ),
-        _permRow(
-          label: 'Accessibility',
-          sublabel: 'Scam scanner',
-          icon: Icons.accessibility_new_outlined,
-          isEnabled: state.permissionStatus.hasAccessibility,
-          onTap: () => _requestAccessibilityPermissionWithPrompt(controller),
-          isLast: false,
-        ),
-        _permRow(
-          label: 'Microphone',
-          sublabel: 'Voice commands',
-          icon: Icons.mic_none_outlined,
-          isEnabled: state.permissionStatus.hasMicrophone,
-          onTap: () => controller.requestMicrophonePermission(),
-          isLast: true,
-        ),
-      ]),
-    );
-  }
-
-  Widget _permRow({
-    required String label,
-    required String sublabel,
-    required IconData icon,
-    required bool isEnabled,
-    required VoidCallback onTap,
-    required bool isLast,
-  }) {
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-        child: Row(children: [
-          Icon(icon, color: isEnabled ? _accent : _txtDim, size: 17),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: _body(13, color: isEnabled ? _txt : _txtSub, w: FontWeight.w500)),
-            Text(sublabel, style: _label(10, spacing: 0)),
-          ])),
-          isEnabled
-              ? Row(children: [
-                  Text('ENABLED', style: _label(9, color: _accent.withOpacity(0.6), spacing: 1.0)),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 18, height: 18,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: _accentDim,
-                      border: Border.all(color: _accent.withOpacity(0.4)),
-                    ),
-                    child: const Icon(Icons.check, color: _accent, size: 10),
-                  ),
-                ])
-              : GestureDetector(
-                  onTap: onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _accentDim,
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(color: _accent.withOpacity(0.2)),
-                    ),
-                    child: Text('Enable', style: _label(11, color: _accent, spacing: 0)),
-                  ),
+                  child: Center(child: Text('Pause', style: _sf(size: 15, color: _txtSecondary, weight: FontWeight.w500))),
                 ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _accentSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _accent.withOpacity(0.3)),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(width: 7, height: 7,
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: _accent)),
+                  const SizedBox(width: 8),
+                  Text('Running', style: _sf(size: 15, color: _accent, weight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ] else
+            Expanded(
+              child: GestureDetector(
+                onTap: () async { HapticFeedback.mediumImpact(); await controller.toggleBubble(true); },
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _accent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(child: Text('Start Agent', style: _sf(size: 15, weight: FontWeight.w600))),
+                ),
+              ),
+            ),
+        ]),
+      ]),
+    );
+  }
+
+  // ── Permissions Card ───────────────────────────────────────────────────────
+  Widget _buildPermissionsCard(HomeState state, HomeController controller) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _buildSectionHeader('Permissions'),
+      const SizedBox(height: 14),
+      Container(
+        decoration: BoxDecoration(
+          color: _bgSecondary,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(children: [
+          _permRow('Screen Overlay', 'Floating bubble', Icons.layers_rounded,
+              state.permissionStatus.hasOverlay,
+              () => controller.requestOverlayPermission(), false),
+          _divider(),
+          _permRow('Accessibility', 'Scam scanner', Icons.accessibility_new_rounded,
+              state.permissionStatus.hasAccessibility,
+              () => _requestAccessibilityPermissionWithPrompt(controller), false),
+          _divider(),
+          _permRow('Microphone', 'Voice commands', Icons.mic_rounded,
+              state.permissionStatus.hasMicrophone,
+              () => controller.requestMicrophonePermission(), true),
         ]),
       ),
-      if (!isLast) Container(height: 1, color: _border),
     ]);
   }
 
-  // ── Section label ──────────────────────────────────────────────────────────
-  Widget _buildSectionLabel(String text) =>
-      Text(text, style: _label(10, spacing: 2.5));
+  Widget _divider() => Container(
+        height: 0.5, color: _separator,
+        margin: const EdgeInsets.only(left: 56),
+      );
 
-  // ── Modules grid ───────────────────────────────────────────────────────────
+  Widget _permRow(String label, String sublabel, IconData icon,
+      bool isEnabled, VoidCallback onTap, bool isLast) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(children: [
+        Container(
+          width: 34, height: 34,
+          decoration: BoxDecoration(
+            color: isEnabled ? _accentSoft : _bgTertiary,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, color: isEnabled ? _accent : _txtSecondary, size: 16),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: _sf(size: 15, weight: FontWeight.w500)),
+          Text(sublabel, style: _sf(size: 12, color: _txtSecondary)),
+        ])),
+        if (isEnabled)
+          const Icon(Icons.checkmark_circle_fill, color: _green, size: 22)
+        else
+          GestureDetector(
+            onTap: () { HapticFeedback.selectionClick(); onTap(); },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: _accentSoft,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('Enable', style: _sf(size: 13, color: _accent, weight: FontWeight.w500)),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  // ── Section header ─────────────────────────────────────────────────────────
+  Widget _buildSectionHeader(String text) =>
+      Text(text.toUpperCase(),
+          style: _sf(size: 11, color: _txtSecondary, weight: FontWeight.w600, spacing: 0.8));
+
+  // ── Modules Grid ───────────────────────────────────────────────────────────
   Widget _buildModulesGrid(
     BuildContext context,
     HomeState state,
@@ -484,215 +447,176 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   ) {
     return Column(children: [
       Row(children: [
-        Expanded(
-          child: _moduleCard(
-            icon: Icons.shield_outlined,
-            label: 'Scam Detection',
-            sublabel: 'Real-time protection',
-            statusLabel: 'ACTIVE',
-            statusColor: _green,
-            accentColor: _green,
-            onTap: _handleScamDetectionTap,
-          ),
-        ),
+        Expanded(child: _moduleCard(
+          icon: Icons.shield_fill, iconBg: _greenSoft, iconColor: _green,
+          label: 'Scam Shield', sublabel: 'Real-time protection',
+          statusLabel: 'Active', statusColor: _green,
+          onTap: _handleScamDetectionTap,
+        )),
         const SizedBox(width: 12),
-        Expanded(
-          child: _moduleCard(
-            icon: Icons.calendar_today_outlined,
-            label: 'Smart Scheduler',
-            sublabel: 'AI task planning',
-            statusLabel: 'OPEN',
-            statusColor: _purple,
-            accentColor: _purple,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SmartSchedulerScreen())),
-          ),
-        ),
+        Expanded(child: _moduleCard(
+          icon: Icons.calendar_fill, iconBg: _purpleSoft, iconColor: _purple,
+          label: 'Scheduler', sublabel: 'AI task planning',
+          statusLabel: 'Open', statusColor: _purple,
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SmartSchedulerScreen())),
+        )),
       ]),
       const SizedBox(height: 12),
       Row(children: [
-        Expanded(
-          child: _moduleCard(
-            icon: Icons.integration_instructions_outlined,
-            label: 'GitHub Agent',
-            sublabel: 'Autonomous code ops',
-            statusLabel: 'READY',
-            statusColor: _amber,
-            accentColor: _amber,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => StreminiAgentScreen())),
-          ),
-        ),
+        Expanded(child: _moduleCard(
+          icon: Icons.chevron_left_right, iconBg: _amberSoft, iconColor: _amber,
+          label: 'GitHub Agent', sublabel: 'Autonomous code ops',
+          statusLabel: 'Ready', statusColor: _amber,
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())),
+        )),
         const SizedBox(width: 12),
-        Expanded(
-          child: keyboardStatus.when(
-            data: (status) => _moduleCard(
-              icon: Icons.keyboard_outlined,
-              label: 'AI Keyboard',
-              sublabel: status.isActive ? 'Ready to type' : 'Needs setup',
-              statusLabel: status.isActive ? 'ACTIVE' : 'SETUP',
-              statusColor: status.isActive ? _green : _amber,
-              accentColor: status.isActive ? _green : _amber,
-              onTap: _openKeyboardSetup,
-            ),
-            loading: () => _moduleCard(
-              icon: Icons.keyboard_outlined,
-              label: 'AI Keyboard',
-              sublabel: 'Checking...',
-              statusLabel: '...',
-              statusColor: _txtDim,
-              accentColor: _txtDim,
-              onTap: _openKeyboardSetup,
-            ),
-            error: (_, __) => _moduleCard(
-              icon: Icons.keyboard_outlined,
-              label: 'AI Keyboard',
-              sublabel: 'Open settings',
-              statusLabel: 'SETUP',
-              statusColor: _amber,
-              accentColor: _amber,
-              onTap: _openKeyboardSetup,
-            ),
+        Expanded(child: keyboardStatus.when(
+          data: (status) => _moduleCard(
+            icon: Icons.keyboard_rounded,
+            iconBg: status.isActive ? _greenSoft : _amberSoft,
+            iconColor: status.isActive ? _green : _amber,
+            label: 'AI Keyboard', sublabel: status.isActive ? 'Active' : 'Setup needed',
+            statusLabel: status.isActive ? 'Active' : 'Setup',
+            statusColor: status.isActive ? _green : _amber,
+            onTap: () => _openKeyboardSetup(),   // ← fixed: no crash
           ),
-        ),
+          loading: () => _moduleCard(
+            icon: Icons.keyboard_rounded, iconBg: _bgTertiary, iconColor: _txtSecondary,
+            label: 'AI Keyboard', sublabel: 'Checking…',
+            statusLabel: '…', statusColor: _txtSecondary,
+            onTap: () => _openKeyboardSetup(),
+          ),
+          error: (_, __) => _moduleCard(
+            icon: Icons.keyboard_rounded, iconBg: _amberSoft, iconColor: _amber,
+            label: 'AI Keyboard', sublabel: 'Tap to setup',
+            statusLabel: 'Setup', statusColor: _amber,
+            onTap: () => _openKeyboardSetup(),
+          ),
+        )),
       ]),
       const SizedBox(height: 12),
-      _quickChatRow(context),
+      // Quick Chat — full width
+      GestureDetector(
+        onTap: () { HapticFeedback.selectionClick(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())); },
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: _bgSecondary,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: _accentSoft,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Icon(Icons.chat_bubble_fill, color: _accent, size: 19),
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Quick Chat', style: _sf(size: 16, weight: FontWeight.w600)),
+              Text('Ask anything, attach documents', style: _sf(size: 13, color: _txtSecondary)),
+            ])),
+            const Icon(Icons.chevron_right, color: _txtTertiary, size: 20),
+          ]),
+        ),
+      ),
     ]);
   }
 
   Widget _moduleCard({
     required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
     required String label,
     required String sublabel,
     required String statusLabel,
     required Color statusColor,
-    required Color accentColor,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () { HapticFeedback.selectionClick(); onTap(); },
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _surface,
+          color: _bgSecondary,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _border),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: accentColor.withOpacity(0.15)),
-              ),
-              child: Icon(icon, color: accentColor, size: 17),
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: iconColor, size: 19),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.07),
-                borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: statusColor.withOpacity(0.18)),
+                color: statusColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(statusLabel, style: _label(8, color: statusColor, spacing: 0.8)),
+              child: Text(statusLabel, style: _sf(size: 10, color: statusColor, weight: FontWeight.w600, spacing: 0)),
             ),
           ]),
-          const SizedBox(height: 16),
-          Text(label, style: _body(13, w: FontWeight.w700)),
-          const SizedBox(height: 3),
-          Text(sublabel, style: _label(11, spacing: 0), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 14),
+          Text(label, style: _sf(size: 15, weight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(sublabel, style: _sf(size: 12, color: _txtSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
       ),
     );
   }
 
-  Widget _quickChatRow(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const ChatScreen())),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: _surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _border),
-        ),
-        child: Row(children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: _accentDim, borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _accent.withOpacity(0.2)),
-            ),
-            child: const Icon(Icons.chat_bubble_outline_rounded, color: _accent, size: 17),
-          ),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Quick Chat', style: _body(13, w: FontWeight.w700)),
-            Text('Ask anything, attach documents', style: _label(11, spacing: 0)),
-          ])),
-          const Icon(Icons.arrow_forward_ios_rounded, color: _txtDim, size: 12),
-        ]),
-      ),
-    );
-  }
-
-  // ── Permission alerts ──────────────────────────────────────────────────────
+  // ── Permission Alerts ──────────────────────────────────────────────────────
   Widget _buildPermAlerts(HomeState state, HomeController controller) {
-    return Column(children: [
-      if (state.permissionStatus.needsOverlay)
-        _permAlert('Overlay Permission', 'Required for floating bubble',
-            Icons.layers_outlined, _amber,
-            () => controller.requestOverlayPermission()),
-      if (state.permissionStatus.needsAccessibility) ...[
-        if (state.permissionStatus.needsOverlay) const SizedBox(height: 8),
-        _permAlert('Accessibility', 'Required for scam scanner',
-            Icons.accessibility_new_outlined, _accent,
-            () => _requestAccessibilityPermissionWithPrompt(controller)),
-      ],
-      if (state.permissionStatus.needsMicrophone) ...[
-        const SizedBox(height: 8),
-        _permAlert('Microphone', 'Required for voice commands',
-            Icons.mic_none_outlined, _accent,
-            () => controller.requestMicrophonePermission()),
-      ],
-    ]);
+    return Container(
+      decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(16)),
+      child: Column(children: [
+        if (state.permissionStatus.needsOverlay) ...[
+          _permAlert('Screen Overlay', 'Required for floating bubble',
+              Icons.layers_rounded, _amber, () => controller.requestOverlayPermission()),
+          if (state.permissionStatus.needsAccessibility || state.permissionStatus.needsMicrophone)
+            Container(height: 0.5, color: _separator, margin: const EdgeInsets.only(left: 56)),
+        ],
+        if (state.permissionStatus.needsAccessibility) ...[
+          _permAlert('Accessibility', 'Required for scam scanner',
+              Icons.accessibility_new_rounded, _accent, () => _requestAccessibilityPermissionWithPrompt(controller)),
+          if (state.permissionStatus.needsMicrophone)
+            Container(height: 0.5, color: _separator, margin: const EdgeInsets.only(left: 56)),
+        ],
+        if (state.permissionStatus.needsMicrophone)
+          _permAlert('Microphone', 'Required for voice commands',
+              Icons.mic_rounded, _accent, () => controller.requestMicrophonePermission()),
+      ]),
+    );
   }
 
   Widget _permAlert(String title, String desc, IconData icon, Color color, VoidCallback onTap) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(children: [
         Container(
           width: 34, height: 34,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(10),
+            color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(9),
           ),
           child: Icon(icon, color: color, size: 16),
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: _body(13, color: color, w: FontWeight.w600)),
-          Text(desc, style: _label(10, spacing: 0)),
+          Text(title, style: _sf(size: 15, weight: FontWeight.w500)),
+          Text(desc, style: _sf(size: 12, color: _txtSecondary)),
         ])),
         GestureDetector(
-          onTap: onTap,
+          onTap: () { HapticFeedback.selectionClick(); onTap(); },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
+              color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: color.withOpacity(0.2)),
             ),
-            child: Text('Enable', style: _label(11, color: color, spacing: 0)),
+            child: Text('Enable', style: _sf(size: 13, color: color, weight: FontWeight.w500)),
           ),
         ),
       ]),
@@ -703,39 +627,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget _buildDrawer(BuildContext context, String Function(String) tr) {
     void close() => Scaffold.maybeOf(context)?.closeDrawer();
     return AppDrawer(items: [
-      AppDrawerItem(icon: Icons.home_outlined, title: 'Home', onTap: close),
+      AppDrawerItem(icon: Icons.house_fill, title: 'Home', onTap: close),
       AppDrawerItem(
-        icon: Icons.calendar_today_outlined, title: 'Smart Scheduler',
+        icon: Icons.calendar_fill, title: 'Smart Scheduler',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const SmartSchedulerScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.auto_awesome_outlined, title: 'Stremini Agent',
+        icon: Icons.chevron_left_right, title: 'Stremini Agent',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.chat_bubble_outline, title: 'Quick Chat',
+        icon: Icons.chat_bubble_fill, title: 'Quick Chat',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.keyboard_outlined, title: 'AI Keyboard',
-        onTap: () async { close(); await _openKeyboardSetup(); },
+        icon: Icons.keyboard_rounded, title: 'AI Keyboard',
+        // ↓ FIX: wrapped in async closure, safe error handling
+        onTap: () async {
+          close();
+          await Future.delayed(const Duration(milliseconds: 250)); // let drawer close
+          await _openKeyboardSetup();
+        },
       ),
       AppDrawerItem(
-        icon: Icons.settings_outlined, title: tr('settings'),
+        icon: Icons.gear_6_teeth_fill, title: tr('settings'),
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.help_outline, title: 'Contact Us',
+        icon: Icons.envelope_fill, title: 'Contact Us',
         onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactUsScreen())); },
       ),
       AppDrawerItem(
-        icon: Icons.logout_outlined, title: 'Sign Out',
+        icon: Icons.arrow_right_on_rectangle, title: 'Sign Out',
         onTap: () { close(); ref.read(authProvider.notifier).signOut(); },
       ),
     ]);
   }
 
-  // ── Handlers (UNCHANGED logic) ─────────────────────────────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────────
   Future<void> _handleScamDetectionTap() async {
     final scannerNotifier = ref.read(scannerStateProvider.notifier);
     await scannerNotifier.toggleScanning();
@@ -744,32 +673,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
         scannerState.error ?? (scannerState.isActive ? 'Scam detection started' : 'Scam detection stopped'),
-        style: _body(13),
+        style: _sf(size: 13),
       ),
-      backgroundColor: _surface,
+      backgroundColor: _bgSecondary,
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: scannerState.error == null ? _green : _amber, width: 1),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
 
+  /// FIX: safe keyboard setup — wrapped in try/catch, no crash
   Future<void> _openKeyboardSetup() async {
-    final service = ref.read(keyboardServiceProvider);
-    final status  = await service.checkKeyboardStatus();
-    if (!status.isEnabled) { await service.openKeyboardSettings(); return; }
-    if (!status.isSelected) { await service.showKeyboardPicker(); return; }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('AI Keyboard is already active', style: _body(13)),
-      backgroundColor: _surface,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: _green, width: 1),
-      ),
-    ));
+    try {
+      final service = ref.read(keyboardServiceProvider);
+      final status  = await service.checkKeyboardStatus();
+      if (!status.isEnabled) { await service.openKeyboardSettings(); return; }
+      if (!status.isSelected) { await service.showKeyboardPicker(); return; }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('AI Keyboard is already active', style: _sf(size: 13)),
+        backgroundColor: _bgSecondary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not open keyboard settings. Please enable it manually in Settings.', style: _sf(size: 13)),
+        backgroundColor: _bgSecondary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    }
   }
 
   Future<void> _requestAccessibilityPermissionWithPrompt(HomeController controller) async {
@@ -780,54 +714,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Future<bool?> _showAccessibilityDialog() {
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: _card,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: _border),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Accessibility Service', style: _sf(size: 17, weight: FontWeight.w600), textAlign: TextAlign.center),
+        content: Text(
+          'Stremini uses Accessibility Service to protect you from scams in real-time by reading visible on-screen text to detect fraud patterns.',
+          style: _sf(size: 13, color: _txtSecondary),
+          textAlign: TextAlign.center,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('ACCESSIBILITY', style: _label(10, spacing: 2.5)),
-            const SizedBox(height: 10),
-            Text('Allow Accessibility Service', style: _body(17, w: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Text(
-              'Stremini uses Accessibility Service to protect you from scams in real-time. It reads visible text on screen to detect fraud patterns and trigger alerts while you browse.',
-              style: _body(13, color: _txtSub),
-            ),
-            const SizedBox(height: 20),
-            Row(children: [
+        actionsPadding: EdgeInsets.zero,
+        actions: [
+          Container(height: 0.5, color: _separator),
+          IntrinsicHeight(
+            child: Row(children: [
               Expanded(
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx, false),
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: _surface, borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _border),
-                    ),
-                    child: Center(child: Text('Not now', style: _body(13, color: _txtSub, w: FontWeight.w600))),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _txtSecondary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                   ),
+                  child: Text('Not Now', style: _sf(size: 17, color: _txtSecondary)),
                 ),
               ),
-              const SizedBox(width: 10),
+              Container(width: 0.5, color: _separator),
               Expanded(
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx, true),
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: _accent, borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(child: Text('Continue', style: _body(13, w: FontWeight.w700))),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _accent,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                   ),
+                  child: Text('Continue', style: _sf(size: 17, color: _accent, weight: FontWeight.w600)),
                 ),
               ),
             ]),
-          ]),
-        ),
+          ),
+        ],
       ),
     );
   }
