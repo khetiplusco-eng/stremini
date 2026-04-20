@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../controllers/home_controller.dart';
@@ -65,14 +66,11 @@ const _logoPath   = 'lib/img/logo.jpg';
 //       - asset: fonts/DMSans-Bold.ttf    weight: 700
 //       - asset: fonts/DMSans-ExtraBold.ttf weight: 800
 // Or use google_fonts package: GoogleFonts.dmSans(...)
-const _fontFamily = 'DMSans';
-
 TextStyle _display(double size, {
   Color color = _txt,
   FontWeight w = FontWeight.w800,
   double spacing = -1.5,
-}) => TextStyle(
-  fontFamily: _fontFamily,
+}) => GoogleFonts.dmSans(
   fontSize: size,
   color: color,
   fontWeight: w,
@@ -83,8 +81,7 @@ TextStyle _display(double size, {
 TextStyle _heading(double size, {
   Color color = _txt,
   FontWeight w = FontWeight.w700,
-}) => TextStyle(
-  fontFamily: _fontFamily,
+}) => GoogleFonts.dmSans(
   fontSize: size,
   color: color,
   fontWeight: w,
@@ -96,8 +93,7 @@ TextStyle _body(double size, {
   Color color = _txt,
   FontWeight w = FontWeight.w400,
   double spacing = 0,
-}) => TextStyle(
-  fontFamily: _fontFamily,
+}) => GoogleFonts.dmSans(
   fontSize: size,
   color: color,
   fontWeight: w,
@@ -109,8 +105,7 @@ TextStyle _caption(double size, {
   Color color = _txtDim,
   FontWeight w = FontWeight.w500,
   double spacing = 1.0,
-}) => TextStyle(
-  fontFamily: _fontFamily,
+}) => GoogleFonts.dmSans(
   fontSize: size,
   color: color,
   fontWeight: w,
