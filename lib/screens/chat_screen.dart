@@ -53,7 +53,7 @@ class _SuggestionItem {
 }
 
 const _suggestions = [
-  _SuggestionItem(Icons.doc_outlined, _accent,
+  _SuggestionItem(Icons.description_outlined, _accent,
       'Summarize a document', 'Extract key points instantly'),
   _SuggestionItem(Icons.terminal_rounded, _green,
       'Review and fix my code', 'Find bugs, suggest improvements'),
@@ -312,7 +312,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(children: [
-        Icon(err ? Icons.xmark_circle_fill : Icons.checkmark_circle_fill,
+        Icon(err ? Icons.cancel : Icons.check_circle,
             color: err ? _red : _green, size: 16),
         const SizedBox(width: 8),
         Expanded(child: Text(msg, style: _sf(size: 13))),
@@ -415,7 +415,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               _snack('Copied to clipboard');
             }
           },
-          icon: Icons.doc_on_doc,
+          icon: Icons.content_copy,
           label: 'Copy',
         ),
         const SizedBox(width: 6),
@@ -431,7 +431,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               },
             ),
           ),
-          icon: Icons.trash,
+          icon: Icons.delete_outline,
           label: 'Clear',
         ),
         const SizedBox(width: 16),
@@ -686,7 +686,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           border: Border.all(color: _accent.withOpacity(0.2)),
         ),
         child: Row(children: [
-          Icon(Icons.doc_text_fill, color: _accent, size: 14),
+          Icon(Icons.description, color: _accent, size: 14),
           const SizedBox(width: 10),
           Expanded(child: Text(text, style: _sf(size: 12, color: _txtSecondary))),
         ]),
@@ -735,7 +735,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             // Attach
-            _inputBtn(icon: Icons.paperclip, onTap: _pickAttachment),
+            _inputBtn(icon: Icons.attach_file, onTap: _pickAttachment),
             const SizedBox(width: 8),
 
             // Text field
@@ -823,19 +823,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   Widget _buildDrawer() => AppDrawer(items: [
         AppDrawerItem(
-            icon: Icons.house_fill, title: 'Home',
+            icon: Icons.home, title: 'Home',
             onTap: () {
               Navigator.pop(context);
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
             }),
         AppDrawerItem(
-            icon: Icons.gear_6_teeth_fill, title: 'Settings',
+            icon: Icons.settings, title: 'Settings',
             onTap: () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
             }),
         AppDrawerItem(
-            icon: Icons.envelope_fill, title: 'Contact Us',
+            icon: Icons.email, title: 'Contact Us',
             onTap: () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactUsScreen()));
@@ -967,10 +967,10 @@ class _AttachSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Text('Add context to your conversation', style: _sf(size: 14, color: _txtSecondary)),
             const SizedBox(height: 20),
-            _tile(context, Icons.doc_text_fill, _red, 'PDF Document', 'Chat about a PDF file', 'pdf'),
-            _tile(context, Icons.doc_fill, _accent, 'Document / Text', 'TXT, MD, CSV, JSON, DOCX', 'text'),
-            _tile(context, Icons.photo_fill, _purple, 'Image (OCR)', 'Extract text from an image', 'image'),
-            _tile(context, Icons.folder_fill, _amber, 'Other File', 'Any supported file type', 'file'),
+            _tile(context, Icons.description, _red, 'PDF Document', 'Chat about a PDF file', 'pdf'),
+            _tile(context, Icons.description, _accent, 'Document / Text', 'TXT, MD, CSV, JSON, DOCX', 'text'),
+            _tile(context, Icons.photo, _purple, 'Image (OCR)', 'Extract text from an image', 'image'),
+            _tile(context, Icons.folder, _amber, 'Other File', 'Any supported file type', 'file'),
           ]),
         ),
         const SizedBox(height: 8),

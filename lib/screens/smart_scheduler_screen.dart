@@ -296,7 +296,7 @@ Color _categoryBg(TaskCategory c) {
   switch (c) { case TaskCategory.work: return _accentSoft; case TaskCategory.health: return _greenSoft; case TaskCategory.finance: return _amberSoft; case TaskCategory.learning: return _purpleSoft; case TaskCategory.personal: return _pinkSoft; default: return _bgTertiary; }
 }
 IconData _categoryIcon(TaskCategory c) {
-  switch (c) { case TaskCategory.work: return Icons.briefcase_fill; case TaskCategory.health: return Icons.heart_fill; case TaskCategory.finance: return Icons.banknote; case TaskCategory.learning: return Icons.book_fill; case TaskCategory.personal: return Icons.person_crop_circle_fill; default: return Icons.checkmark_circle_fill; }
+  switch (c) { case TaskCategory.work: return Icons.work; case TaskCategory.health: return Icons.favorite; case TaskCategory.finance: return Icons.payments; case TaskCategory.learning: return Icons.book; case TaskCategory.personal: return Icons.account_circle; default: return Icons.check_circle; }
 }
 String _categoryLabel(TaskCategory c) => c.name[0].toUpperCase() + c.name.substring(1);
 String _priorityLabel(TaskPriority p) => p.name[0].toUpperCase() + p.name.substring(1);
@@ -373,7 +373,7 @@ class _TimezoneOnboardingScreenState extends State<_TimezoneOnboardingScreen>
                   decoration: InputDecoration(
                     hintText: 'Search country or region…',
                     hintStyle: _sf(size: 15, color: _txtTertiary),
-                    prefixIcon: const Icon(Icons.magnifyingglass, color: _txtSecondary, size: 18),
+                    prefixIcon: const Icon(Icons.search, color: _txtSecondary, size: 18),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -404,14 +404,14 @@ class _TimezoneOnboardingScreenState extends State<_TimezoneOnboardingScreen>
                           color: selected ? _accentSoft : _bgSecondary,
                           borderRadius: BorderRadius.circular(9),
                         ),
-                        child: Icon(Icons.globe_americas_fill, color: selected ? _accent : _txtSecondary, size: 17),
+                        child: Icon(Icons.public, color: selected ? _accent : _txtSecondary, size: 17),
                       ),
                       const SizedBox(width: 12),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(tz.label, style: _sf(size: 15, color: selected ? _txt : _txtSecondary, weight: selected ? FontWeight.w500 : FontWeight.w400)),
                         Text(tz.offset, style: _sf(size: 12, color: selected ? _accent : _txtTertiary)),
                       ])),
-                      if (selected) const Icon(Icons.checkmark_circle_fill, color: _accent, size: 22),
+                      if (selected) const Icon(Icons.check_circle, color: _accent, size: 22),
                     ]),
                   ),
                 );
@@ -613,7 +613,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(8)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.globe_americas_fill, color: _txtSecondary, size: 13),
+              const Icon(Icons.public, color: _txtSecondary, size: 13),
               const SizedBox(width: 5),
               Text(tzOption.offset.isEmpty ? 'TZ' : tzOption.offset,
                   style: _sf(size: 12, color: _accent, weight: FontWeight.w500)),
@@ -727,7 +727,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
             Container(
               width: 32, height: 32,
               decoration: BoxDecoration(color: _accentSoft, borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.bell_badge_fill, color: _accent, size: 16),
+              child: const Icon(Icons.notifications_active, color: _accent, size: 16),
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -793,7 +793,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
         Container(
           width: 48, height: 48,
           decoration: BoxDecoration(color: _accentSoft, borderRadius: BorderRadius.circular(13)),
-          child: const Icon(Icons.calendar_badge_plus_fill, color: _accent, size: 22),
+          child: const Icon(Icons.event_available, color: _accent, size: 22),
         ),
         const SizedBox(height: 12),
         Text('No upcoming tasks', style: _sf(size: 16, weight: FontWeight.w600)),
@@ -820,7 +820,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Icon(Icons.trash_fill, color: _txt, size: 20),
+        child: const Icon(Icons.delete, color: _txt, size: 20),
       ),
       onDismissed: (_) => _delete(task),
       child: Padding(
@@ -892,7 +892,7 @@ class _SmartSchedulerScreenState extends State<SmartSchedulerScreen>
                     Container(
                       width: 26, height: 26,
                       decoration: BoxDecoration(shape: BoxShape.circle, color: _greenSoft),
-                      child: const Icon(Icons.checkmark, color: _green, size: 14),
+                      child: const Icon(Icons.check, color: _green, size: 14),
                     ),
                     const SizedBox(width: 12),
                     Expanded(child: Text(task.title,
@@ -1046,9 +1046,9 @@ class _PreviewSheetState extends State<_PreviewSheet>
 
           // Meta chips
           Wrap(spacing: 8, runSpacing: 8, children: [
-            _chip(Icons.calendar_fill, '${_fmtDate(_time)}  ${_fmtTime(_time)}', _accent, onTap: _pickTime),
-            _chip(Icons.timer_fill, '${widget.task.estimatedDuration} min', _txtSecondary),
-            _chip(Icons.flag_fill, _priorityLabel(widget.task.priority), priColor),
+            _chip(Icons.calendar_month, '${_fmtDate(_time)}  ${_fmtTime(_time)}', _accent, onTap: _pickTime),
+            _chip(Icons.timer, '${widget.task.estimatedDuration} min', _txtSecondary),
+            _chip(Icons.flag, _priorityLabel(widget.task.priority), priColor),
             _chip(_categoryIcon(widget.task.category), _categoryLabel(widget.task.category), catColor),
           ]),
 
@@ -1060,14 +1060,14 @@ class _PreviewSheetState extends State<_PreviewSheet>
             decoration: BoxDecoration(color: _accentSoft, borderRadius: BorderRadius.circular(12)),
             child: Column(children: [
               Row(children: [
-                const Icon(Icons.bell_badge_fill, color: _accent, size: 14),
+                const Icon(Icons.notifications_active, color: _accent, size: 14),
                 const SizedBox(width: 8),
                 Text('Scheduled Alerts', style: _sf(size: 12, color: _accent, weight: FontWeight.w600)),
               ]),
               const SizedBox(height: 10),
-              _notifRow(Icons.alarm_fill, '5-minute warning', '${_fmtDate(warnTime)}  ${_fmtTime(warnTime)}'),
+              _notifRow(Icons.alarm, '5-minute warning', '${_fmtDate(warnTime)}  ${_fmtTime(warnTime)}'),
               const SizedBox(height: 6),
-              _notifRow(Icons.bell_fill, 'Task starts', '${_fmtDate(_time)}  ${_fmtTime(_time)}'),
+              _notifRow(Icons.notifications, 'Task starts', '${_fmtDate(_time)}  ${_fmtTime(_time)}'),
             ]),
           ),
 
@@ -1077,7 +1077,7 @@ class _PreviewSheetState extends State<_PreviewSheet>
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(color: _redSoft, borderRadius: BorderRadius.circular(10)),
               child: Row(children: [
-                const Icon(Icons.exclamationmark_triangle_fill, color: _red, size: 15),
+                const Icon(Icons.warning_amber, color: _red, size: 15),
                 const SizedBox(width: 8),
                 Expanded(child: Text('This time is in the past. Tap the date above to update.',
                     style: _sf(size: 13, color: _red))),
@@ -1115,7 +1115,7 @@ class _PreviewSheetState extends State<_PreviewSheet>
                   height: 52,
                   decoration: BoxDecoration(color: _accent, borderRadius: BorderRadius.circular(14)),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.checkmark, color: _txt, size: 18),
+                    const Icon(Icons.check, color: _txt, size: 18),
                     const SizedBox(width: 8),
                     Text('Schedule Task', style: _sf(size: 16, weight: FontWeight.w600)),
                   ]),
@@ -1153,7 +1153,7 @@ class _PreviewSheetState extends State<_PreviewSheet>
           Text(label, style: _sf(size: 13, color: color, weight: FontWeight.w500)),
           if (onTap != null) ...[
             const SizedBox(width: 5),
-            Icon(Icons.pencil, color: color.withOpacity(0.5), size: 11),
+            Icon(Icons.edit, color: color.withOpacity(0.5), size: 11),
           ],
         ]),
       ),
