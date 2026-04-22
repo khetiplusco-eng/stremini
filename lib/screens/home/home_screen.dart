@@ -1,5 +1,5 @@
-// home_screen.dart — EXACT MATCH TO SCREENSHOT
-// Design: Pure black, teal #0AFFE0 accent, system standby card, toggles, feature grid, bottom nav
+// home_screen.dart — SMOOTH BOTTOM NAV + EXACT DESIGN PRESERVED
+// Navigate from any screen to any screen smoothly via fade transitions
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,13 +19,12 @@ import '../contact_us_screen.dart';
 import '../smart_scheduler_screen.dart';
 import '../../providers/auth_provider.dart';
 
-// ── Design tokens — exact from screenshot ────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
 const _bg        = Color(0xFF000000);
 const _surface   = Color(0xFF0D0D0D);
 const _card      = Color(0xFF111111);
 const _cardBorder= Color(0xFF1C1C1C);
 
-// Teal accent — exactly from screenshot
 const _teal      = Color(0xFF0AFFE0);
 const _tealDim   = Color(0xFF071A18);
 const _tealMid   = Color(0xFF0AC8B4);
@@ -61,6 +60,17 @@ TextStyle _t(double size, {
 }) => GoogleFonts.dmSans(
   fontSize: size, color: color, fontWeight: w,
   letterSpacing: spacing, height: height,
+);
+
+// ── Smooth page route helper ──────────────────────────────────────────────────
+PageRoute _fadeRoute(Widget screen) => PageRouteBuilder(
+  pageBuilder: (_, __, ___) => screen,
+  transitionDuration: const Duration(milliseconds: 220),
+  reverseTransitionDuration: const Duration(milliseconds: 200),
+  transitionsBuilder: (_, animation, __, child) => FadeTransition(
+    opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+    child: child,
+  ),
 );
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -100,6 +110,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
+  // ── Navigation helper ──────────────────────────────────────────────────────
+  void _navTo(Widget screen, int tabIndex, {bool replace = false}) {
+    HapticFeedback.selectionClick();
+    setState(() => _selectedTab = tabIndex);
+    if (replace) {
+      Navigator.pushReplacement(context, _fadeRoute(screen));
+    } else {
+      Navigator.push(context, _fadeRoute(screen));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state      = ref.watch(homeControllerProvider);
@@ -129,36 +150,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       child: Scaffold(
         backgroundColor: _bg,
         drawer: _buildDrawer(context, tr),
-        body: Column(
-          children: [
-            Expanded(
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: _topBar(context, state, displayName)),
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        const SizedBox(height: 24),
-                        _standbyCard(state, controller),
-                        const SizedBox(height: 20),
-                        _sectionLabel('SYSTEM ACCESS'),
-                        const SizedBox(height: 12),
-                        _accessCard(state, controller),
-                        const SizedBox(height: 24),
-                        _sectionLabel('ACTIVE FEATURES'),
-                        const SizedBox(height: 14),
-                        _featuresGrid(context, state, controller, kbStatus),
-                        const SizedBox(height: 80),
-                      ]),
-                    ),
+        body: Column(children: [
+          Expanded(
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(child: _topBar(context, state, displayName)),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      const SizedBox(height: 24),
+                      _standbyCard(state, controller),
+                      const SizedBox(height: 20),
+                      _sectionLabel('SYSTEM ACCESS'),
+                      const SizedBox(height: 12),
+                      _accessCard(state, controller),
+                      const SizedBox(height: 24),
+                      _sectionLabel('ACTIVE FEATURES'),
+                      const SizedBox(height: 14),
+                      _featuresGrid(context, state, controller, kbStatus),
+                      const SizedBox(height: 80),
+                    ]),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ]),
         bottomNavigationBar: _bottomNav(context),
       ),
     );
@@ -177,18 +196,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           onTap: () { HapticFeedback.selectionClick(); Scaffold.of(ctx).openDrawer(); },
           child: Container(
             width: 36, height: 36,
-            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(9), border: Border.all(color: _border)),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: _border),
+            ),
             child: const Icon(Icons.menu_rounded, color: _txtSub, size: 17),
           ),
         )),
         const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('STREMINI AI', style: _t(16, w: FontWeight.w800, spacing: 1.5)),
-            Text('AI COMPANION', style: _t(10, color: _txtSub, spacing: 2.0)),
-          ]),
-        ),
-        // Avatar circle
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('STREMINI AI', style: _t(16, w: FontWeight.w800, spacing: 1.5)),
+          Text('AI COMPANION', style: _t(10, color: _txtSub, spacing: 2.0)),
+        ])),
         Container(
           width: 38, height: 38,
           decoration: BoxDecoration(
@@ -211,7 +231,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // ── Standby card — matches screenshot exactly ──────────────────────────────
+  // ── Standby card ───────────────────────────────────────────────────────────
   Widget _standbyCard(HomeState state, HomeController controller) {
     final isActive = state.bubbleActive;
     return GestureDetector(
@@ -230,7 +250,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Text('SYSTEM STANDBY', style: _t(10, color: _txtSub, spacing: 2.0)),
           const SizedBox(height: 20),
           Row(children: [
-            // Power button circle
             Container(
               width: 64, height: 64,
               decoration: BoxDecoration(
@@ -241,22 +260,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   width: 2,
                 ),
               ),
-              child: Icon(
-                Icons.power_settings_new_rounded,
-                color: isActive ? _teal : _txtSub,
-                size: 28,
-              ),
+              child: Icon(Icons.power_settings_new_rounded,
+                color: isActive ? _teal : _txtSub, size: 28),
             ),
             const SizedBox(width: 20),
-            Text(
-              isActive ? 'Active' : 'Inactive',
-              style: _t(32, w: FontWeight.w700, spacing: -1.0),
-            ),
+            Text(isActive ? 'Active' : 'Inactive',
+              style: _t(32, w: FontWeight.w700, spacing: -1.0)),
           ]),
           const SizedBox(height: 20),
           Row(children: [
             Icon(Icons.auto_awesome_outlined,
-                color: isActive ? _teal : _txtDim, size: 15),
+              color: isActive ? _teal : _txtDim, size: 15),
             const SizedBox(width: 8),
             Text(
               isActive ? 'Stremini is running.' : 'Tap to activate Stremini.',
@@ -268,13 +282,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // ── Section label ──────────────────────────────────────────────────────────
   Widget _sectionLabel(String text) => Row(children: [
     Container(width: 3, height: 14, color: _teal, margin: const EdgeInsets.only(right: 10)),
     Text(text, style: _t(11, color: _txtSub, w: FontWeight.w700, spacing: 2.0)),
   ]);
 
-  // ── System access card — with toggles matching screenshot ─────────────────
+  // ── System access card ─────────────────────────────────────────────────────
   Widget _accessCard(HomeState state, HomeController controller) {
     return Container(
       decoration: BoxDecoration(
@@ -359,8 +372,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     margin: const EdgeInsets.symmetric(horizontal: 18),
   );
 
-  // ── Features grid — 2×2 matching screenshot ───────────────────────────────
-  Widget _featuresGrid(BuildContext context, HomeState state, HomeController controller, AsyncValue<KeyboardStatus> kbStatus) {
+  // ── Features grid ──────────────────────────────────────────────────────────
+  Widget _featuresGrid(BuildContext context, HomeState state,
+      HomeController controller, AsyncValue<KeyboardStatus> kbStatus) {
     return Column(children: [
       Row(children: [
         Expanded(child: _featureCard(
@@ -378,7 +392,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           iconColor: _teal,
           title: 'GitHub Agent',
           subtitle: 'Autonomous Ops',
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())),
+          onTap: () => _navTo(StreminiAgentScreen(), 1),
         )),
       ]),
       const SizedBox(height: 12),
@@ -454,7 +468,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // ── Bottom nav — matches screenshot exactly ────────────────────────────────
+  // ── Bottom nav — smooth fade navigation to any screen ─────────────────────
   Widget _bottomNav(BuildContext context) {
     return Container(
       padding: EdgeInsets.only(
@@ -467,19 +481,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         border: const Border(top: BorderSide(color: _border, width: 0.5)),
       ),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-        _navItem(icon: Icons.home_outlined, index: 0, onTap: () => setState(() => _selectedTab = 0)),
-        _navItem(
-          icon: Icons.code_rounded, index: 1,
-          onTap: () { setState(() => _selectedTab = 1); Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())); },
-        ),
-        _navItem(
-          icon: Icons.chat_bubble_outline_rounded, index: 2,
-          onTap: () { setState(() => _selectedTab = 2); Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())); },
-        ),
-        _navItem(
-          icon: Icons.settings_outlined, index: 3,
-          onTap: () { setState(() => _selectedTab = 3); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); },
-        ),
+        // Home — active
+        _navItem(icon: Icons.home_outlined, index: 0, onTap: () {
+          setState(() => _selectedTab = 0);
+          // Already on home, do nothing
+        }),
+        // GitHub Agent
+        _navItem(icon: Icons.code_rounded, index: 1, onTap: () {
+          _navTo(StreminiAgentScreen(), 1);
+        }),
+        // Chat
+        _navItem(icon: Icons.chat_bubble_outline_rounded, index: 2, onTap: () {
+          _navTo(const ChatScreen(), 2);
+        }),
+        // Settings
+        _navItem(icon: Icons.settings_outlined, index: 3, onTap: () {
+          _navTo(const SettingsScreen(), 3);
+        }),
       ]),
     );
   }
@@ -494,7 +512,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Icon(icon, color: selected ? _teal : _txtDim, size: 22),
           if (selected) ...[
             const SizedBox(height: 4),
-            Container(width: 4, height: 4, decoration: BoxDecoration(shape: BoxShape.circle, color: _teal)),
+            Container(
+              width: 4, height: 4,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: _teal),
+            ),
           ],
         ]),
       ),
@@ -521,30 +542,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return AppDrawer(items: [
       AppDrawerItem(icon: Icons.home_outlined, title: 'Home', onTap: close),
       AppDrawerItem(icon: Icons.calendar_today_outlined, title: 'Smart Scheduler',
-          onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const SmartSchedulerScreen())); }),
+          onTap: () { close(); Navigator.push(context, _fadeRoute(const SmartSchedulerScreen())); }),
       AppDrawerItem(icon: Icons.code_rounded, title: 'GitHub Agent',
-          onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen())); }),
+          onTap: () { close(); Navigator.push(context, _fadeRoute(StreminiAgentScreen())); }),
       AppDrawerItem(icon: Icons.chat_bubble_outline, title: 'Quick Chat',
-          onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())); }),
+          onTap: () { close(); Navigator.push(context, _fadeRoute(const ChatScreen())); }),
       AppDrawerItem(icon: Icons.keyboard_outlined, title: 'AI Keyboard',
           onTap: () async { close(); await _openKeyboardSetup(); }),
       AppDrawerItem(icon: Icons.settings_outlined, title: tr('settings'),
-          onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); }),
+          onTap: () { close(); Navigator.push(context, _fadeRoute(const SettingsScreen())); }),
       AppDrawerItem(icon: Icons.help_outline, title: 'Contact Us',
-          onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactUsScreen())); }),
+          onTap: () { close(); Navigator.push(context, _fadeRoute(const ContactUsScreen())); }),
       AppDrawerItem(icon: Icons.logout_outlined, title: 'Sign Out',
           onTap: () { close(); ref.read(authProvider.notifier).signOut(); }),
     ]);
   }
 
-  // ── Handlers (UNCHANGED logic) ─────────────────────────────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────────
   Future<void> _handleScamDetectionTap() async {
     final scannerNotifier = ref.read(scannerStateProvider.notifier);
     await scannerNotifier.toggleScanning();
     if (!mounted) return;
     final scannerState = ref.read(scannerStateProvider);
-    _toast(scannerState.error ?? (scannerState.isActive ? 'Scam detection started' : 'Scam detection stopped'),
-        isError: scannerState.error != null);
+    _toast(
+      scannerState.error ?? (scannerState.isActive ? 'Scam detection started' : 'Scam detection stopped'),
+      isError: scannerState.error != null,
+    );
   }
 
   Future<void> _openKeyboardSetup() async {
@@ -575,28 +598,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               width: 44, height: 44,
-              decoration: BoxDecoration(color: _tealDim, borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _teal.withOpacity(0.25))),
+              decoration: BoxDecoration(
+                color: _tealDim,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _teal.withOpacity(0.25)),
+              ),
               child: const Icon(Icons.accessibility_new_outlined, color: _teal, size: 20),
             ),
             const SizedBox(height: 16),
             Text('Accessibility Service', style: _t(18, w: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text('Stremini uses Accessibility Service to protect you from scams in real-time. It reads visible text on screen to detect fraud patterns and trigger alerts while you browse.',
-                style: _t(13, color: _txtSub)),
+            Text(
+              'Stremini uses Accessibility Service to protect you from scams in real-time. It reads visible text on screen to detect fraud patterns and trigger alerts while you browse.',
+              style: _t(13, color: _txtSub),
+            ),
             const SizedBox(height: 24),
             Row(children: [
               Expanded(child: GestureDetector(
                 onTap: () => Navigator.pop(ctx, false),
-                child: Container(height: 44,
-                  decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: _border)),
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _border),
+                  ),
                   child: Center(child: Text('Not now', style: _t(14, color: _txtSub, w: FontWeight.w600))),
                 ),
               )),
               const SizedBox(width: 10),
               Expanded(child: GestureDetector(
                 onTap: () => Navigator.pop(ctx, true),
-                child: Container(height: 44,
+                child: Container(
+                  height: 44,
                   decoration: BoxDecoration(color: _teal, borderRadius: BorderRadius.circular(12)),
                   child: Center(child: Text('Continue', style: _t(14, color: Colors.black, w: FontWeight.w700))),
                 ),
