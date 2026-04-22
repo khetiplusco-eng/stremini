@@ -86,6 +86,9 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private var isDragging    = false
     private var hasMoved      = false
     private var touchSlopPx   = 0
+    private var touchDownTimeMs = 0L
+
+    private val dragActivationDelayMs = 120L
 
     private val bubbleSizeDp   = 60f
     private val menuItemSizeDp = 50f
@@ -678,11 +681,13 @@ class ChatOverlayService : Service(), View.OnTouchListener {
                 resetIdleTimer()
                 initialTouchX = event.rawX; initialTouchY = event.rawY
                 initialX = bubbleScreenX; initialY = bubbleScreenY
+                touchDownTimeMs = event.eventTime
                 isDragging = false; hasMoved = false; return true
             }
             MotionEvent.ACTION_MOVE -> {
                 if (isWindowResizing || preventPositionUpdates) return true
                 if (isMenuExpanded) return true
+                if ((event.eventTime - touchDownTimeMs) < dragActivationDelayMs) return true
 
                 val dx = (event.rawX - initialTouchX).toInt()
                 val dy = (event.rawY - initialTouchY).toInt()
