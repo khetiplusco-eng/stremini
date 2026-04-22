@@ -1,5 +1,5 @@
 // chat_screen.dart — EXACT MATCH TO SCREENSHOT
-// Black bg, blue accent #0A84FF, bottom navigation bar, iOS-style chat bubbles
+// Black bg, blue accent #0A84FF, sparkle avatar, iOS chat bubbles, smooth bottom nav
 // ALL FUNCTIONALITY PRESERVED
 
 import 'dart:convert';
@@ -36,30 +36,23 @@ const _purple       = Color(0xFFBF5AF2);
 const _txt          = Color(0xFFFFFFFF);
 const _txtSecondary = Color(0xFF8E8E93);
 const _txtTertiary  = Color(0xFF48484A);
-const _userBubble   = Color(0xFF0A84FF);
+const _userBubble   = Color(0xFF1C1C1E);  // Dark grey for user bubble (matches screenshot)
 const _logoPath     = 'lib/img/logo.jpg';
-
-// ── Suggestion data ───────────────────────────────────────────────────────────
-class _SuggestionItem {
-  final IconData icon;
-  final Color    iconColor;
-  final String   title;
-  final String   subtitle;
-  const _SuggestionItem(this.icon, this.iconColor, this.title, this.subtitle);
-}
-
-const _suggestions = [
-  _SuggestionItem(Icons.description_outlined, _accent, 'Summarize a document', 'Extract key points instantly'),
-  _SuggestionItem(Icons.terminal_rounded, _green, 'Review and fix my code', 'Find bugs, suggest improvements'),
-  _SuggestionItem(Icons.lightbulb_rounded, _amber, 'Brainstorm ideas', 'Generate concepts and creativity'),
-  _SuggestionItem(Icons.translate_rounded, _purple, 'Translate this text', 'Convert to any language'),
-];
 
 // ── Typography ────────────────────────────────────────────────────────────────
 TextStyle _sf({
-  double size = 14, FontWeight weight = FontWeight.w400,
-  Color color = _txt, double height = 1.5, double spacing = -0.3,
-}) => GoogleFonts.dmSans(fontSize: size, fontWeight: weight, color: color, height: height, letterSpacing: spacing);
+  double size = 14,
+  FontWeight weight = FontWeight.w400,
+  Color color = _txt,
+  double height = 1.5,
+  double spacing = -0.3,
+}) => GoogleFonts.dmSans(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: height,
+  letterSpacing: spacing,
+);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 String _fmtTime(DateTime dt) {
@@ -132,6 +125,22 @@ String _cleanBotResponse(String text) {
   return s.trim();
 }
 
+// ── Suggestion data ───────────────────────────────────────────────────────────
+class _SuggestionItem {
+  final IconData icon;
+  final Color    iconColor;
+  final String   title;
+  final String   subtitle;
+  const _SuggestionItem(this.icon, this.iconColor, this.title, this.subtitle);
+}
+
+const _suggestions = [
+  _SuggestionItem(Icons.description_outlined, _accent, 'Summarize a document', 'Extract key points instantly'),
+  _SuggestionItem(Icons.terminal_rounded, _green, 'Review and fix my code', 'Find bugs, suggest improvements'),
+  _SuggestionItem(Icons.lightbulb_rounded, _amber, 'Brainstorm ideas', 'Generate concepts and creativity'),
+  _SuggestionItem(Icons.translate_rounded, _purple, 'Translate this text', 'Convert to any language'),
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatScreen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,7 +163,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
     _controller.addListener(() => setState(() => _isTyping = _controller.text.isNotEmpty));
@@ -162,9 +171,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   @override
   void dispose() {
-    _fadeCtrl.dispose(); _controller.dispose(); _scrollCtrl.dispose(); _focusNode.dispose();
+    _fadeCtrl.dispose();
+    _controller.dispose();
+    _scrollCtrl.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
+
+  // ── Navigation helper — smooth push/replace ───────────────────────────────
+  void _navTo(Widget screen, {bool replace = false}) {
+    HapticFeedback.selectionClick();
+    if (replace) {
+      Navigator.pushReplacement(context, _smoothRoute(screen));
+    } else {
+      Navigator.push(context, _smoothRoute(screen));
+    }
+  }
+
+  PageRoute _smoothRoute(Widget screen) => PageRouteBuilder(
+    pageBuilder: (_, __, ___) => screen,
+    transitionDuration: const Duration(milliseconds: 220),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
+    transitionsBuilder: (_, animation, __, child) => FadeTransition(
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+      child: child,
+    ),
+  );
 
   void _pickAttachment() {
     HapticFeedback.selectionClick();
@@ -252,8 +284,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _scrollDown() {
     Future.delayed(const Duration(milliseconds: 300), () {
       if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -300,12 +335,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           ),
           if (_processingDoc) _processingBar(),
           _inputArea(docCtx),
-          _bottomNav(context),
+          _bottomNav(),
         ]),
       ),
     );
   }
 
+  // ── App bar — matches screenshot: menu icon + "STREMINI AI / CHAT" + Copy/Clear ─
   Widget _buildAppBar(DocumentContext? docCtx) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -314,81 +350,147 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         border: Border(bottom: BorderSide(color: _separator, width: 0.5)),
       ),
       child: Row(children: [
+        // Hamburger menu button
         GestureDetector(
           onTap: () { HapticFeedback.selectionClick(); Navigator.pop(context); },
           child: Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.menu_rounded, color: _txtSecondary, size: 17),
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: _bgSecondary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.menu_rounded, color: _txtSecondary, size: 18),
           ),
         ),
         const SizedBox(width: 12),
-        _logoAvatar(32),
+        // Sparkle avatar — matches screenshot exactly
+        _sparkleAvatar(32),
         const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('STREMINI AI', style: _sf(size: 15, weight: FontWeight.w800, spacing: 1.0)),
-          Text('CHAT', style: _sf(size: 10, color: _txtSecondary, spacing: 2.0)),
-        ])),
+        // Title
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('STREMINI AI', style: _sf(size: 15, weight: FontWeight.w800, spacing: 1.0)),
+              Text('CHAT', style: _sf(size: 10, color: _txtSecondary, spacing: 2.0)),
+            ],
+          ),
+        ),
+        // Copy button
         GestureDetector(
           onTap: () {
             final msgs = ref.read(chatNotifierProvider).value ?? [];
             final botMsgs = msgs.where((m) => m.type == MessageType.bot).toList();
-            if (botMsgs.isNotEmpty) { Clipboard.setData(ClipboardData(text: botMsgs.last.text)); _snack('Copied'); }
+            if (botMsgs.isNotEmpty) {
+              Clipboard.setData(ClipboardData(text: botMsgs.last.text));
+              _snack('Copied');
+            }
           },
-          child: _appBarBtn('Copy'),
+          child: _headerBtn('Copy'),
         ),
         const SizedBox(width: 6),
+        // Clear button
         GestureDetector(
-          onTap: () => showDialog(context: context, builder: (ctx) => _ConfirmDialog(
-            title: 'Clear Chat',
-            message: 'All messages will be permanently removed.',
-            onConfirm: () { Navigator.pop(ctx); ref.read(chatNotifierProvider.notifier).clearChat(); },
-          )),
-          child: _appBarBtn('Clear'),
+          onTap: () => showDialog(
+            context: context,
+            builder: (ctx) => _ConfirmDialog(
+              title: 'Clear Chat',
+              message: 'All messages will be permanently removed.',
+              onConfirm: () {
+                Navigator.pop(ctx);
+                ref.read(chatNotifierProvider.notifier).clearChat();
+              },
+            ),
+          ),
+          child: _headerBtn('Clear'),
         ),
       ]),
     );
   }
 
-  Widget _appBarBtn(String label) => Container(
+  Widget _headerBtn(String label) => Container(
     height: 30,
     padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(8)),
-    child: Center(child: Text(label, style: _sf(size: 12, color: _txtSecondary, weight: FontWeight.w500))),
+    decoration: BoxDecoration(
+      color: _bgSecondary,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Center(
+      child: Text(label, style: _sf(size: 12, color: _txtSecondary, weight: FontWeight.w500)),
+    ),
   );
 
-  Widget _logoAvatar(double size) {
+  // ── Sparkle avatar — blue gradient circle with ✦ icon, matches screenshot ──
+  Widget _sparkleAvatar(double size) {
     return Container(
       width: size, height: size,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(colors: [Color(0xFF0A84FF), Color(0xFF5AC8FA)],
-            begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+          colors: [Color(0xFF0A84FF), Color(0xFF5AC8FA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-      child: ClipOval(
-        child: Image.asset(_logoPath, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Center(child: Text('S', style: _sf(size: size * 0.42, weight: FontWeight.w800))),
+      child: Center(
+        child: Icon(
+          Icons.auto_awesome_rounded,
+          color: Colors.white,
+          size: size * 0.5,
         ),
       ),
     );
   }
 
+  // ── Logo avatar for bot messages (uses actual logo.jpg) ───────────────────
+  Widget _botAvatar(double size) {
+    return Container(
+      width: size, height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFF0A84FF), Color(0xFF5AC8FA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          _logoPath,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Center(
+            child: Icon(Icons.auto_awesome_rounded, color: Colors.white, size: size * 0.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Welcome view ──────────────────────────────────────────────────────────
   Widget _welcomeView() {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
       child: Column(children: [
+        // Large sparkle avatar
         Container(
           width: 80, height: 80,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(colors: [Color(0xFF0A84FF), Color(0xFF5AC8FA)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0A84FF), Color(0xFF5AC8FA)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             boxShadow: [BoxShadow(color: _accent.withOpacity(0.3), blurRadius: 32)],
           ),
-          child: ClipOval(child: Image.asset(_logoPath, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome_rounded, color: _txt, size: 32),
-          )),
+          child: ClipOval(
+            child: Image.asset(
+              _logoPath,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome_rounded, color: _txt, size: 36),
+            ),
+          ),
         ),
         const SizedBox(height: 24),
         Text('How can I help?', style: _sf(size: 28, weight: FontWeight.w700, spacing: -1.0)),
@@ -396,9 +498,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         Text("Ask me anything — I'm ready.", style: _sf(size: 15, color: _txtSecondary)),
         const SizedBox(height: 40),
         GridView.count(
-          crossAxisCount: 2, shrinkWrap: true,
+          crossAxisCount: 2,
+          shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.15,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.15,
           children: _suggestions.map((s) => _suggestionCard(s)).toList(),
         ),
       ]),
@@ -410,16 +515,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       onTap: () { HapticFeedback.selectionClick(); _send(item.title); },
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          color: _bgSecondary,
+          borderRadius: BorderRadius.circular(16),
+        ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(width: 36, height: 36,
-            decoration: BoxDecoration(color: item.iconColor.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: item.iconColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
             child: Icon(item.icon, color: item.iconColor, size: 18),
           ),
           const Spacer(),
           Text(item.title, style: _sf(size: 13, weight: FontWeight.w600)),
           const SizedBox(height: 3),
-          Text(item.subtitle, style: _sf(size: 11, color: _txtSecondary, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
+          Text(item.subtitle,
+            style: _sf(size: 11, color: _txtSecondary, height: 1.3),
+            maxLines: 2, overflow: TextOverflow.ellipsis),
         ]),
       ),
     );
@@ -433,7 +547,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       color: color.withOpacity(0.08),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(children: [
-        Icon(isOcr ? Icons.image_rounded : isDocx ? Icons.description_rounded : Icons.picture_as_pdf_rounded, color: color, size: 16),
+        Icon(
+          isOcr ? Icons.image_rounded : isDocx ? Icons.description_rounded : Icons.picture_as_pdf_rounded,
+          color: color, size: 16,
+        ),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(doc.fileName, style: _sf(size: 13, weight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -441,7 +558,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ])),
         GestureDetector(
           onTap: () => ref.read(chatNotifierProvider.notifier).clearDocument(),
-          child: Container(width: 28, height: 28,
+          child: Container(
+            width: 28, height: 28,
             decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(8)),
             child: const Icon(Icons.close_rounded, color: _txtSecondary, size: 14),
           ),
@@ -465,50 +583,99 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           },
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(_accent))),
+      loading: () => const Center(
+        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(_accent)),
+      ),
       error: (e, _) => Center(child: Text('Error: $e', style: _sf(size: 14, color: _red))),
     );
   }
 
   Widget _bubble(Message message, {bool showAvatar = true}) {
     switch (message.type) {
-      case MessageType.typing: return _typingBubble();
+      case MessageType.typing:        return _typingBubble();
       case MessageType.documentBanner: return _docAnnounce(message.text);
       default:
         final isUser      = message.type == MessageType.user;
         final displayText = isUser ? message.text : _cleanBotResponse(message.text);
+
         if (!isUser) {
+          // Bot bubble — left-aligned plain text, matches screenshot
           return Padding(
-            padding: EdgeInsets.only(bottom: 2, top: showAvatar ? 20 : 2, left: showAvatar ? 0 : 42),
+            padding: EdgeInsets.only(
+              bottom: 2, top: showAvatar ? 20 : 2,
+              left: showAvatar ? 0 : 42,
+            ),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              if (showAvatar) ...[ _logoAvatar(28), const SizedBox(width: 8) ]
+              if (showAvatar) ...[ _botAvatar(28), const SizedBox(width: 8) ]
               else const SizedBox(width: 36),
-              Flexible(child: GestureDetector(
-                onLongPress: () { HapticFeedback.mediumImpact(); Clipboard.setData(ClipboardData(text: displayText)); _snack('Copied'); },
-                child: SelectableText(displayText, style: _sf(size: 15, height: 1.6), cursorColor: _accent),
-              )),
+              Flexible(
+                child: GestureDetector(
+                  onLongPress: () {
+                    HapticFeedback.mediumImpact();
+                    Clipboard.setData(ClipboardData(text: displayText));
+                    _snack('Copied');
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _bgSecondary,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(18),
+                        topRight: Radius.circular(18),
+                        bottomRight: Radius.circular(18),
+                        bottomLeft: Radius.circular(4),
+                      ),
+                    ),
+                    child: SelectableText(
+                      displayText,
+                      style: _sf(size: 15, height: 1.6),
+                      cursorColor: _accent,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 40),
             ]),
           );
         }
+
+        // User bubble — right-aligned dark rounded pill, matches screenshot
         return Padding(
           padding: EdgeInsets.only(bottom: 2, top: showAvatar ? 20 : 2),
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               const SizedBox(width: 60),
-              Flexible(child: GestureDetector(
-                onLongPress: () { HapticFeedback.mediumImpact(); Clipboard.setData(ClipboardData(text: displayText)); _snack('Copied'); },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                  decoration: const BoxDecoration(color: _userBubble, borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20), topRight: Radius.circular(20),
-                    bottomLeft: Radius.circular(20), bottomRight: Radius.circular(5),
-                  )),
-                  child: SelectableText(displayText, style: _sf(size: 15, height: 1.5, color: _txt), cursorColor: _txt),
+              Flexible(
+                child: GestureDetector(
+                  onLongPress: () {
+                    HapticFeedback.mediumImpact();
+                    Clipboard.setData(ClipboardData(text: displayText));
+                    _snack('Copied');
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: _bgSecondary,  // Dark grey matching screenshot
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(5),
+                      ),
+                    ),
+                    child: SelectableText(
+                      displayText,
+                      style: _sf(size: 15, height: 1.5, color: _txt),
+                      cursorColor: _txt,
+                    ),
+                  ),
                 ),
-              )),
+              ),
             ]),
-            Padding(padding: const EdgeInsets.only(top: 4, right: 4),
-              child: Text(_fmtTime(message.timestamp), style: _sf(size: 10, color: _txtTertiary))),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, right: 4),
+              child: Text(_fmtTime(message.timestamp), style: _sf(size: 10, color: _txtTertiary)),
+            ),
           ]),
         );
     }
@@ -518,11 +685,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     margin: const EdgeInsets.symmetric(vertical: 10),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(
-      color: _accent.withOpacity(0.1), borderRadius: BorderRadius.circular(12),
+      color: _accent.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12),
       border: Border.all(color: _accent.withOpacity(0.2)),
     ),
     child: Row(children: [
-      Icon(Icons.description, color: _accent, size: 14), const SizedBox(width: 10),
+      Icon(Icons.description, color: _accent, size: 14),
+      const SizedBox(width: 10),
       Expanded(child: Text(text, style: _sf(size: 12, color: _txtSecondary))),
     ]),
   );
@@ -530,13 +699,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   Widget _typingBubble() => Padding(
     padding: const EdgeInsets.only(bottom: 2, top: 20),
     child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-      _logoAvatar(28), const SizedBox(width: 8),
+      _botAvatar(28),
+      const SizedBox(width: 8),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: const BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20), topRight: Radius.circular(20),
-          bottomRight: Radius.circular(20), bottomLeft: Radius.circular(5),
-        )),
+        decoration: BoxDecoration(
+          color: _bgSecondary,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(18),
+            topRight: Radius.circular(18),
+            bottomRight: Radius.circular(18),
+            bottomLeft: Radius.circular(4),
+          ),
+        ),
         child: _TypingDots(),
       ),
     ]),
@@ -546,12 +721,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     color: _bgSecondary,
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
     child: Row(children: [
-      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(_accent))),
+      const SizedBox(width: 16, height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(_accent)),
+      ),
       const SizedBox(width: 12),
       Text('Extracting text…', style: _sf(size: 13, color: _txtSecondary)),
     ]),
   );
 
+  // ── Input area — matches screenshot: "+" | text field | mic button ─────────
   Widget _inputArea(DocumentContext? docCtx) {
     return Container(
       decoration: const BoxDecoration(
@@ -560,22 +738,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       ),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        _inputBtn(icon: Icons.add, onTap: _pickAttachment),
+        // "+" attach button — dark circle
+        GestureDetector(
+          onTap: _pickAttachment,
+          child: Container(
+            width: 36, height: 36,
+            margin: const EdgeInsets.only(bottom: 2),
+            decoration: const BoxDecoration(
+              color: _bgSecondary,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.add, color: _txtSecondary, size: 20),
+          ),
+        ),
         const SizedBox(width: 8),
+        // Text field — rounded pill with "Message Stremini..." hint
         Expanded(
           child: Container(
             constraints: const BoxConstraints(maxHeight: 120),
             decoration: BoxDecoration(
               color: _bgSecondary,
               borderRadius: BorderRadius.circular(24),
-              border: docCtx != null ? Border.all(color: _accent.withOpacity(0.4), width: 1.5) : null,
+              border: docCtx != null
+                ? Border.all(color: _accent.withOpacity(0.4), width: 1.5)
+                : null,
             ),
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
               style: _sf(size: 15, height: 1.4),
               decoration: InputDecoration(
-                hintText: docCtx != null ? 'Ask about ${docCtx.fileName}…' : 'Message Stremini...',
+                hintText: docCtx != null
+                  ? 'Ask about ${docCtx.fileName}…'
+                  : 'Message Stremini...',
                 hintStyle: _sf(size: 15, color: _txtTertiary),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
@@ -587,46 +782,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           ),
         ),
         const SizedBox(width: 8),
+        // Send / mic button — blue circle (matches screenshot)
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 180),
           child: _isTyping
-              ? GestureDetector(
-                  key: const ValueKey('send'), onTap: _send,
-                  child: Container(
-                    width: 36, height: 36,
-                    margin: const EdgeInsets.only(bottom: 2),
-                    decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
-                    child: const Icon(Icons.arrow_upward_rounded, color: _txt, size: 18),
-                  ),
-                )
-              : GestureDetector(
-                  key: const ValueKey('mic'), onTap: _showVoiceSnack,
-                  child: Container(
-                    width: 36, height: 36,
-                    margin: const EdgeInsets.only(bottom: 2),
-                    decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
-                    child: const Icon(Icons.mic_rounded, color: _txt, size: 18),
-                  ),
+            ? GestureDetector(
+                key: const ValueKey('send'),
+                onTap: _send,
+                child: Container(
+                  width: 36, height: 36,
+                  margin: const EdgeInsets.only(bottom: 2),
+                  decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
+                  child: const Icon(Icons.arrow_upward_rounded, color: _txt, size: 18),
                 ),
+              )
+            : GestureDetector(
+                key: const ValueKey('mic'),
+                onTap: _showVoiceSnack,
+                child: Container(
+                  width: 36, height: 36,
+                  margin: const EdgeInsets.only(bottom: 2),
+                  decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
+                  child: const Icon(Icons.mic_rounded, color: _txt, size: 18),
+                ),
+              ),
         ),
       ]),
     );
   }
 
-  Widget _inputBtn({required IconData icon, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36, height: 36,
-        margin: const EdgeInsets.only(bottom: 2),
-        decoration: const BoxDecoration(color: _bgSecondary, shape: BoxShape.circle),
-        child: Icon(icon, color: _txtSecondary, size: 18),
-      ),
-    );
-  }
-
-  // ── Bottom nav — matches screenshot ───────────────────────────────────────
-  Widget _bottomNav(BuildContext context) {
+  // ── Bottom nav — smooth navigation to any screen ──────────────────────────
+  Widget _bottomNav() {
     return Container(
       padding: EdgeInsets.only(
         left: 12, right: 12, top: 8,
@@ -638,15 +824,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         border: const Border(top: BorderSide(color: _separator, width: 0.5)),
       ),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-        _navBtn(icon: Icons.home_outlined, onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()))),
-        _navBtn(icon: Icons.code_rounded, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreminiAgentScreen()))),
-        _navBtn(icon: Icons.chat_bubble_rounded, active: true, onTap: () {}),
-        _navBtn(icon: Icons.settings_outlined, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+        _navBtn(
+          icon: Icons.home_outlined,
+          active: false,
+          onTap: () => _navTo(const HomeScreen(), replace: true),
+        ),
+        _navBtn(
+          icon: Icons.code_rounded,
+          active: false,
+          onTap: () => _navTo(StreminiAgentScreen()),
+        ),
+        _navBtn(
+          icon: Icons.chat_bubble_rounded,
+          active: true,  // Chat is active
+          onTap: () {},
+        ),
+        _navBtn(
+          icon: Icons.settings_outlined,
+          active: false,
+          onTap: () => _navTo(const SettingsScreen()),
+        ),
       ]),
     );
   }
 
-  Widget _navBtn({required IconData icon, VoidCallback? onTap, bool active = false}) {
+  Widget _navBtn({required IconData icon, required VoidCallback onTap, bool active = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
@@ -655,7 +857,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           Icon(icon, color: active ? _txt : _txtTertiary, size: 22),
           if (active) ...[
             const SizedBox(height: 4),
-            Container(width: 4, height: 4, decoration: const BoxDecoration(shape: BoxShape.circle, color: _txt)),
+            Container(
+              width: 4, height: 4,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: _txt),
+            ),
           ],
         ]),
       ),
@@ -671,23 +876,37 @@ class _TypingDots extends StatefulWidget {
 
 class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
+
   @override
-  void initState() { super.initState(); _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat(); }
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+  }
+
   @override
   void dispose() { _ctrl.dispose(); super.dispose(); }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) => Row(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) {
-        final t = (_ctrl.value - i * 0.2).clamp(0.0, 1.0);
-        final opacity = t < 0.5 ? t / 0.5 : 1 - (t - 0.5) / 0.5;
-        return Padding(padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: Container(width: 7, height: 7,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: Color.lerp(_txtTertiary, _txtSecondary, opacity)),
-          ),
-        );
-      })),
+      builder: (_, __) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(3, (i) {
+          final t = (_ctrl.value - i * 0.2).clamp(0.0, 1.0);
+          final opacity = t < 0.5 ? t / 0.5 : 1 - (t - 0.5) / 0.5;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Container(
+              width: 7, height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color.lerp(_txtTertiary, _txtSecondary, opacity),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 }
@@ -697,30 +916,47 @@ class _ConfirmDialog extends StatelessWidget {
   final String title, message;
   final VoidCallback onConfirm;
   const _ConfirmDialog({required this.title, required this.message, required this.onConfirm});
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF1C1C1E),
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      title: Text(title, style: GoogleFonts.dmSans(fontSize: 17, fontWeight: FontWeight.w600, color: _txt), textAlign: TextAlign.center),
-      content: Text(message, style: GoogleFonts.dmSans(fontSize: 13, color: _txtSecondary), textAlign: TextAlign.center),
+      title: Text(title,
+        style: GoogleFonts.dmSans(fontSize: 17, fontWeight: FontWeight.w600, color: _txt),
+        textAlign: TextAlign.center,
+      ),
+      content: Text(message,
+        style: GoogleFonts.dmSans(fontSize: 13, color: _txtSecondary),
+        textAlign: TextAlign.center,
+      ),
       actionsPadding: EdgeInsets.zero,
       actions: [
         Container(height: 0.5, color: _separator),
-        IntrinsicHeight(child: Row(children: [
-          Expanded(child: TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(foregroundColor: _accent, padding: const EdgeInsets.symmetric(vertical: 14), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
-            child: Text('Cancel', style: GoogleFonts.dmSans(fontSize: 17, color: _accent)),
-          )),
-          Container(width: 0.5, color: _separator),
-          Expanded(child: TextButton(
-            onPressed: onConfirm,
-            style: TextButton.styleFrom(foregroundColor: _red, padding: const EdgeInsets.symmetric(vertical: 14), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
-            child: Text('Clear', style: GoogleFonts.dmSans(fontSize: 17, color: _red, fontWeight: FontWeight.w600)),
-          )),
-        ])),
+        IntrinsicHeight(
+          child: Row(children: [
+            Expanded(child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: _accent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+              child: Text('Cancel', style: GoogleFonts.dmSans(fontSize: 17, color: _accent)),
+            )),
+            Container(width: 0.5, color: _separator),
+            Expanded(child: TextButton(
+              onPressed: onConfirm,
+              style: TextButton.styleFrom(
+                foregroundColor: _red,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+              child: Text('Clear', style: GoogleFonts.dmSans(fontSize: 17, color: _red, fontWeight: FontWeight.w600)),
+            )),
+          ]),
+        ),
       ],
     );
   }
@@ -730,30 +966,42 @@ class _ConfirmDialog extends StatelessWidget {
 class _AttachSheet extends StatelessWidget {
   final Future<void> Function(String type) onPicked;
   const _AttachSheet({required this.onPicked});
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(color: Color(0xFF1C1C1E), borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 36, height: 4, margin: const EdgeInsets.only(top: 10, bottom: 20),
+        Container(
+          width: 36, height: 4,
+          margin: const EdgeInsets.only(top: 10, bottom: 20),
           decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(2)),
         ),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: [
-          Text('Attach File', style: _sf(size: 20, weight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text('Add context to your conversation', style: _sf(size: 14, color: _txtSecondary)),
-          const SizedBox(height: 20),
-          _tile(context, Icons.description, _red, 'PDF Document', 'Chat about a PDF file', 'pdf'),
-          _tile(context, Icons.description, _accent, 'Document / Text', 'TXT, MD, CSV, JSON, DOCX', 'text'),
-          _tile(context, Icons.photo, _purple, 'Image (OCR)', 'Extract text from an image', 'image'),
-          _tile(context, Icons.folder, _amber, 'Other File', 'Any supported file type', 'file'),
-        ])),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(children: [
+            Text('Attach File', style: _sf(size: 20, weight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('Add context to your conversation', style: _sf(size: 14, color: _txtSecondary)),
+            const SizedBox(height: 20),
+            _tile(context, Icons.picture_as_pdf_rounded, _red, 'PDF Document', 'Chat about a PDF file', 'pdf'),
+            _tile(context, Icons.description_rounded, _accent, 'Document / Text', 'TXT, MD, CSV, JSON, DOCX', 'text'),
+            _tile(context, Icons.photo_rounded, _purple, 'Image (OCR)', 'Extract text from an image', 'image'),
+            _tile(context, Icons.folder_rounded, _amber, 'Other File', 'Any supported file type', 'file'),
+          ]),
+        ),
         const SizedBox(height: 8),
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16), width: double.infinity, height: 54,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          width: double.infinity, height: 54,
           decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(14)),
-          child: TextButton(onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: _sf(size: 17, weight: FontWeight.w600))),
+          child: TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: _sf(size: 17, weight: FontWeight.w600)),
+          ),
         ),
         const SizedBox(height: 32),
       ]),
@@ -768,8 +1016,12 @@ class _AttachSheet extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(color: _bgSecondary, borderRadius: BorderRadius.circular(12)),
         child: Row(children: [
-          Container(width: 36, height: 36,
-            decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
             child: Icon(icon, color: color, size: 17),
           ),
           const SizedBox(width: 14),
