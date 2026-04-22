@@ -149,7 +149,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         windowManager     = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         inputMethodManager= getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         startForegroundService()
-        touchSlopPx = ViewConfiguration.get(this).scaledTouchSlop * 2
+        touchSlopPx = maxOf(ViewConfiguration.get(this).scaledTouchSlop * 3, dpToPx(18f))
 
         bubbleController        = BubbleController(::hideBubble, ::showBubble).apply { setVisible(isBubbleVisible) }
         floatingChatController  = FloatingChatController(::showFloatingChatbot, ::hideFloatingChatbot)
