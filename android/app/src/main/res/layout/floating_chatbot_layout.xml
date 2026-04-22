@@ -17,11 +17,11 @@
         android:padding="12dp"
         android:gravity="center_vertical">
 
-        <!-- AI Logo — round clip using a circular container -->
+        <!-- AI Logo — rounded-square clip to match logo shape -->
         <FrameLayout
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:background="@drawable/circle_bg_blue"
+            android:background="@drawable/circle_bg_rounded"
             android:clipToOutline="true">
 
             <ImageView
