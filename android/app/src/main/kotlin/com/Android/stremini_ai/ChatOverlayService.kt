@@ -25,6 +25,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.ViewConfiguration
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.InputMethodManager
@@ -40,7 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -84,6 +85,10 @@ class ChatOverlayService : Service(), View.OnTouchListener {
     private var initialTouchY = 0f
     private var isDragging    = false
     private var hasMoved      = false
+    private var touchSlopPx   = 0
+    private var touchDownTimeMs = 0L
+
+    private val dragActivationDelayMs = 120L
 
     private val bubbleSizeDp   = 60f
     private val menuItemSizeDp = 50f
@@ -147,6 +152,7 @@ class ChatOverlayService : Service(), View.OnTouchListener {
         windowManager     = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         inputMethodManager= getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         startForegroundService()
+        touchSlopPx = maxOf(ViewConfiguration.get(this).scaledTouchSlop * 3, dpToPx(18f))
 
         bubbleController        = BubbleController(::hideBubble, ::showBubble).apply { setVisible(isBubbleVisible) }
         floatingChatController  = FloatingChatController(::showFloatingChatbot, ::hideFloatingChatbot)
@@ -675,24 +681,27 @@ class ChatOverlayService : Service(), View.OnTouchListener {
                 resetIdleTimer()
                 initialTouchX = event.rawX; initialTouchY = event.rawY
                 initialX = bubbleScreenX; initialY = bubbleScreenY
+                touchDownTimeMs = event.eventTime
                 isDragging = false; hasMoved = false; return true
             }
             MotionEvent.ACTION_MOVE -> {
                 if (isWindowResizing || preventPositionUpdates) return true
+                if (isMenuExpanded) return true
+                if ((event.eventTime - touchDownTimeMs) < dragActivationDelayMs) return true
+
                 val dx = (event.rawX - initialTouchX).toInt()
                 val dy = (event.rawY - initialTouchY).toInt()
-                if (abs(dx) > 10 || abs(dy) > 10) {
+                val movementDistance = hypot(dx.toDouble(), dy.toDouble())
+                if (movementDistance > touchSlopPx) {
                     hasMoved = true
-                    if (!isMenuExpanded) {
-                        isDragging = true
-                        bubbleScreenX = initialX + dx; bubbleScreenY = initialY + dy
-                        val bubbleSizePx       = dpToPx(bubbleSizeDp).toFloat()
-                        val collapsedWindowSizePx = bubbleSizePx + dpToPx(10f)
-                        val windowHalfSize     = collapsedWindowSizePx / 2
-                        params.x = (bubbleScreenX - windowHalfSize).toInt()
-                        params.y = (bubbleScreenY - windowHalfSize).toInt()
-                        try { windowManager.updateViewLayout(overlayView, params) } catch (_: Exception) {}
-                    } else { if (!isMenuAnimating) collapseMenu() }
+                    isDragging = true
+                    bubbleScreenX = initialX + dx; bubbleScreenY = initialY + dy
+                    val bubbleSizePx       = dpToPx(bubbleSizeDp).toFloat()
+                    val collapsedWindowSizePx = bubbleSizePx + dpToPx(10f)
+                    val windowHalfSize     = collapsedWindowSizePx / 2
+                    params.x = (bubbleScreenX - windowHalfSize).toInt()
+                    params.y = (bubbleScreenY - windowHalfSize).toInt()
+                    try { windowManager.updateViewLayout(overlayView, params) } catch (_: Exception) {}
                 }
                 return true
             }

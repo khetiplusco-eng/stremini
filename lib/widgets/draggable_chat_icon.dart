@@ -101,10 +101,11 @@ class _DraggableChatIconState extends ConsumerState<DraggableChatIcon>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _expandAnimation;
-  late Animation<double> _rotateAnimation;
   late Offset _currentPosition;
   // Store the initial side (true for right, false for left)
   late bool _isRightSide;
+  static const double _dragThreshold = 3.0;
+  double _dragDistance = 0.0;
 
   static const double _iconSize = 60.0;
 
@@ -119,11 +120,8 @@ class _DraggableChatIconState extends ConsumerState<DraggableChatIcon>
     );
 
     _expandAnimation =
-        CurvedAnimation(parent: _controller, curve: Curves.easeOutBack);
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
 
-    _rotateAnimation = Tween<double>(begin: 0.0, end: 0.125).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
 
     _updateAnimation(widget.overlayMode == "radial");
     // Determine initial side after first frame
@@ -257,15 +255,26 @@ class _DraggableChatIconState extends ConsumerState<DraggableChatIcon>
               /// 🔥 MAIN GLOWING BUTTON
               GestureDetector(
                 onPanUpdate: (details) {
+                  _dragDistance += details.delta.distance;
+                  if (_dragDistance < _dragThreshold) {
+                    return;
+                  }
+
                   // Update position without toggling radial menu during drag
                   setState(() {
                     _currentPosition += details.delta;
                   });
                 },
                 onPanEnd: (details) {
+                  if (_dragDistance < _dragThreshold) {
+                    return;
+                  }
+
                   final screenWidth = MediaQuery.of(context).size.width;
                   final screenHeight = MediaQuery.of(context).size.height;
                   final topPadding = MediaQuery.of(context).padding.top;
+                  _isRightSide =
+                      (_currentPosition.dx + (_iconSize / 2)) > (screenWidth / 2);
                   final clampedX =
                       _isRightSide ? (screenWidth - _iconSize) : 0.0;
                   final clampedY = _currentPosition.dy
@@ -274,16 +283,14 @@ class _DraggableChatIconState extends ConsumerState<DraggableChatIcon>
                   widget.onDragEnd(_currentPosition);
                 },
                 onTap: widget.onTapMain,
-                child: RotationTransition(
-                  turns: isRadial
-                      ? _rotateAnimation
-                      : const AlwaysStoppedAnimation(0.0),
-                  child: GlowCircleButton(
-                    icon: Icons.local_fire_department_rounded,
-                    size: 70,
-                    onTap: widget.onTapMain,
-                    isActive: widget.isScannerActive,
-                  ),
+                onPanDown: (_) {
+                  _dragDistance = 0.0;
+                },
+                child: GlowCircleButton(
+                  icon: Icons.local_fire_department_rounded,
+                  size: 70,
+                  onTap: widget.onTapMain,
+                  isActive: widget.isScannerActive,
                 ),
               ),
             ],
